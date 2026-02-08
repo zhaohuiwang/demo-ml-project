@@ -1,0 +1,54 @@
+{
+  "best_params": {
+    "n_layers": 1,
+    "n_units_l0": 128,
+    "dropout": 0.262041687247742,
+    "optimizer": "RMSprop",
+    "lr": 0.015216901799236196
+  },
+  "best_value": 0.13113186806440352,
+  "emb_sizes": [
+    [
+      2,
+      1
+    ],
+    [
+      3,
+      2
+    ],
+    [
+      51,
+      26
+    ]
+  ],
+  "numeric_features": [
+    "year",
+    "population",
+    "real_gdp",
+    "real_personal_income",
+    "real_pce",
+    "gdp",
+    "personal_income",
+    "disposable_personal_income",
+    "pce",
+    "regional_price_parities",
+    "n_jobs",
+    "regional_price_deflator",
+    "non_smoker_rate"
+  ],
+  "categorical_features": [
+    "sex_code",
+    "age_group",
+    "states_abbr"
+  ],
+  "targets": [
+    "breast",
+    "lung_and_bronchus",
+    "melanoma_of_the_skin"
+  ],
+  "val_metrics": {
+    "val_rmse": 1.0689265232469847,
+    "val_mse": 1.1426039121008866
+  },
+  "timestamp": "2026-02-08T10:34:13.951611"
+}
