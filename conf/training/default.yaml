@@ -1,0 +1,7 @@
+
+
+test_size: 0.2
+random_state: 42
+batch_size: 64
+max_epochs: 100
+patience: 10

@@ -32,6 +32,7 @@ dependencies = [
     "torchinfo>=1.8.0",
     "statsmodels>=0.14.6",
     "feast>=0.59.0",
+    "hydra-zen>=0.16.0",
 ]
 
 [project.scripts]

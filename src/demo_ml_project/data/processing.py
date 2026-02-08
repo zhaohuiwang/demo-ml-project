@@ -3,9 +3,11 @@
 
 import pandas as pd
 from sklearn.preprocessing import OrdinalEncoder, StandardScaler
-from ..configs.schema import ConfigSchema, PreprocessingArtifacts
 
-def prepare_data(df: pd.DataFrame, cfg: ConfigSchema) -> tuple[pd.DataFrame, OrdinalEncoder, StandardScaler, StandardScaler]:
+from ..configs.schema import RootConfig
+from ..configs.artifacts import PreprocessingArtifacts
+
+def prepare_data(df: pd.DataFrame, cfg: RootConfig) -> PreprocessingArtifacts:
     """ 
     A data preparation function:
     - Encodes categorical features

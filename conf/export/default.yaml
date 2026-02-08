@@ -1,0 +1,8 @@
+
+
+dir: model_export
+weights: champion_weights.pth
+in_scaler: input_scaler.pkl
+tar_scaler: target_scaler.pkl
+cat_encoder: categorical_input_encoders.pkl
+metadata: metadata.json

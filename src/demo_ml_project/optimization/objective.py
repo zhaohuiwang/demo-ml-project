@@ -6,16 +6,16 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from ..configs.schema import ConfigSchema
+from ..configs.schema import RootConfig
 from ..utils.early_stopping import EarlyStopping
 from ..models.model import DynamicModel
 
 def objective(
         # String-based annotation to avoid evaluation. Activate if needed. 
-        trial: "optuna.Trial",
-        cfg: "ConfigSchema",
-        train_loader: "DataLoader", 
-        val_loader: "DataLoader", 
+        trial: optuna.Trial,
+        cfg: RootConfig,           # ← now typed Pydantic model
+        train_loader: DataLoader,
+        val_loader: DataLoader, 
         emb_sizes: list[tuple[int, int]],
         device: torch.device,
         task: str = "regression"
@@ -24,6 +24,7 @@ def objective(
     # Sample architecture
     #choose how many hidden layers the network has
     n_layers: int = trial.suggest_int('n_layers', *cfg.optuna.layer_range)
+    
     # for each layer, choose how many neurons it has
     hidden_dims: list[int] = [
         trial.suggest_categorical(f'n_units_l{i}', cfg.optuna.units_list) for i in range(n_layers)

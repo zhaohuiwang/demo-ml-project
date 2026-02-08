@@ -1,0 +1,35 @@
+
+
+train_data_path: data/processed/model_df.parquet
+
+drop_columns:
+  - states
+  - fips
+  - sex
+
+cat_cols:
+  - sex_code
+  - age_group
+  - states_abbr
+
+date_cols: []
+
+num_cols:
+  - year
+  - population
+  - real_gdp
+  - real_personal_income
+  - real_pce
+  - gdp
+  - personal_income
+  - disposable_personal_income
+  - pce
+  - regional_price_parities
+  - n_jobs
+  - regional_price_deflator
+  - non_smoker_rate
+
+target_cols:
+  - breast
+  - lung_and_bronchus
+  - melanoma_of_the_skin
