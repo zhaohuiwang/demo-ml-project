@@ -1,9 +1,5 @@
 
-
 # project-root(demo-ml-project)/src/demo_ml_project/pipelines/model_training.py
-
-from __future__ import annotations
-
 
 import json
 from pathlib import Path
