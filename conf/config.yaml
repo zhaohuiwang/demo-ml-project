@@ -1,15 +1,15 @@
 
-# project-root(demo-ml-project)/config/config.yaml
+# project-root(demo-ml-project)/conf/config.yaml
 
 defaults:
-  - _self_                  # ← important: root config overrides come last
+  - _self_            # ← important: root config overrides come last
   - data: default
   - training: default
   - optuna: default
   - export: default
 
-project_root: ${hydra:runtime.cwd}   # or use hydra.utils.get_original_cwd() if needed
+project_root: ${hydra:runtime.cwd} # or use hydra.utils.get_original_cwd() if needed
 
 # Optional global settings
 seed: 42
-device: CUDA  # can be overridden: python train.py device=cpu
+device: cuda

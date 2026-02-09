@@ -13,7 +13,7 @@ from ..models.model import DynamicModel
 def objective(
         # String-based annotation to avoid evaluation. Activate if needed. 
         trial: optuna.Trial,
-        cfg: RootConfig,           # ← now typed Pydantic model
+        cfg: RootConfig,
         train_loader: DataLoader,
         val_loader: DataLoader, 
         emb_sizes: list[tuple[int, int]],
@@ -71,7 +71,7 @@ def objective(
             # Matches the model and dataloader architecture
             xc, xn, y = xc.to(device), xn.to(device), y.to(device)
             optimizer.zero_grad()
-            # model(xc, xn) not model(x)
+            # model(xc, xn), cat and num, not model(x)
             loss = criterion(model(xc, xn), y)
             loss.backward()
             optimizer.step()

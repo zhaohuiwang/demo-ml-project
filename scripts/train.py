@@ -30,10 +30,17 @@ if missing:
 
 
 @hydra.main(version_base=None, config_path="../conf", config_name="config")
-def main(cfg: RootConfig):
+def main(hydra_cfg: RootConfig):
+
+    # Eagerly resolves all interpolations in place.
+    OmegaConf.resolve(hydra_cfg)
+    
+    # Convert → pydantic (this runs all validation & path resolution)
+    cfg = RootConfig.model_validate(OmegaConf.to_container(hydra_cfg, resolve=True))
+
     # Log resolved config (while still DictConfig)
     logger = get_logger(__name__)
-    logger.debug("Resolved config:\n%s", OmegaConf.to_yaml(cfg, resolve=True))
+    logger.debug("Resolved config:\n%s", cfg)
 
     run_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
     timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
@@ -61,3 +68,10 @@ def main(cfg: RootConfig):
 
 if __name__ == "__main__":
     main()
+
+# look into `from hydra_zen import zen` for more advance sugar features
+
+
+# # Dependency
+# project-root(demo-ml-project)/conf/config.yaml
+# /src/demo_ml_project/pipelines/model_training.py

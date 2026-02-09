@@ -8,9 +8,13 @@ import joblib
 import optuna
 import pandas as pd
 import torch
+
 from datetime import datetime
-from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
+
+from sklearn.model_selection import train_test_split
+from optuna.samplers import TPESampler
+from optuna.pruners import MedianPruner, HyperbandPruner
 
 from ..configs.schema import RootConfig
 from ..configs.artifacts import (
@@ -22,7 +26,6 @@ from ..data.dataset import InputDataset
 from ..models.model import DynamicModel
 from ..optimization.objective import objective
 from ..utils.logging import get_logger
-
 
 
 class TrainingPipeline:
@@ -43,8 +46,9 @@ class TrainingPipeline:
         self._export_dir.mkdir(parents=True, exist_ok=True)
 
         metrics = self.evaluate(artifacts.model)
-        self._export(artifacts, metrics)
+        self.logger.info(f"Validation metrics: {metrics}")
 
+        self._export(artifacts, metrics)
         self.logger.info("Full training pipeline completed ✓")
 
     def train_only(self) -> TrainingArtifacts:
@@ -130,8 +134,6 @@ class TrainingPipeline:
         ]
 
     def _create_dataloaders(self, df: pd.DataFrame) -> tuple[DataLoader, DataLoader]:
-        from sklearn.model_selection import train_test_split
-
         train_df, val_df = train_test_split(
             df,
             test_size=self.cfg.training.test_size,
@@ -155,9 +157,6 @@ class TrainingPipeline:
         )
 
     def _optimize_hyperparameters(self, train_loader, val_loader, emb_sizes):
-        from optuna.samplers import TPESampler
-        from optuna.pruners import MedianPruner, HyperbandPruner
-
         pruner_map = {"median": MedianPruner(), "hyperband": HyperbandPruner(), "nop": optuna.pruners.NopPruner()}
 
         sampler_map = {
@@ -212,11 +211,9 @@ class TrainingPipeline:
             "best_params": artifacts.study.best_params,
             "best_value": artifacts.study.best_value,
             "emb_sizes": artifacts.emb_sizes, 
-            # OmegaConf containers (ListConfig or DictConfig), which are not natively JSON-serializable. Python's json.dumps() only understands basic types (dict, list, str, int, float, bool, None, etc.) — not special OmegaConf objects.
-            # Use OmegaConf.to_container(..., resolve=True) to convert the OmegaConf containers to plain Python list / dict
-            "numeric_features": OmegaConf.to_container(self.cfg.data.num_cols,  resolve=True),
-            "categorical_features": OmegaConf.to_container(self.cfg.data.cat_cols, resolve=True),
-            "targets": OmegaConf.to_container(self.cfg.data.target_cols, resolve=True),
+            "numeric_features": self.cfg.data.num_cols,
+            "categorical_features": self.cfg.data.cat_cols,
+            "targets": self.cfg.data.target_cols,
             "val_metrics": metrics,
             "timestamp": datetime.now().isoformat(),
             }
