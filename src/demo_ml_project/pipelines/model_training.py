@@ -13,6 +13,7 @@ import optuna
 import pandas as pd
 import torch
 from datetime import datetime
+from omegaconf import OmegaConf
 from torch.utils.data import DataLoader
 
 from ..configs.schema import RootConfig
@@ -29,7 +30,7 @@ from ..utils.logging import get_logger
 
 
 class TrainingPipeline:
-    def __init__(self, cfg: ConfigSchema):
+    def __init__(self, cfg: RootConfig):
         self.cfg = cfg
         self.logger = get_logger(self.__class__.__name__)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
@@ -210,15 +211,20 @@ class TrainingPipeline:
         joblib.dump(artifacts.preprocessors["tar_scaler"], p / self.cfg.export.tar_scaler)
         joblib.dump(artifacts.preprocessors["cat_encoder"], p / self.cfg.export.cat_encoder)
 
+
         metadata = {
             "best_params": artifacts.study.best_params,
             "best_value": artifacts.study.best_value,
-            "emb_sizes": artifacts.emb_sizes,
-            "numeric_features": self.cfg.data.num_cols,
-            "categorical_features": self.cfg.data.cat_cols,
-            "targets": self.cfg.data.target_cols,
+            "emb_sizes": artifacts.emb_sizes, 
+            # OmegaConf containers (ListConfig or DictConfig), which are not natively JSON-serializable. Python's json.dumps() only understands basic types (dict, list, str, int, float, bool, None, etc.) — not special OmegaConf objects.
+            # Use OmegaConf.to_container(..., resolve=True) to convert the OmegaConf containers to plain Python list / dict
+            "numeric_features": OmegaConf.to_container(self.cfg.data.num_cols,  resolve=True),
+            "categorical_features": OmegaConf.to_container(self.cfg.data.cat_cols, resolve=True),
+            "targets": OmegaConf.to_container(self.cfg.data.target_cols, resolve=True),
             "val_metrics": metrics,
             "timestamp": datetime.now().isoformat(),
-        }
-
-        (p / self.cfg.export.metadata).write_text(json.dumps(metadata, indent=2))
+            }
+        
+        (p / self.cfg.export.metadata).write_text(
+            json.dumps(metadata, indent=2)
+            )

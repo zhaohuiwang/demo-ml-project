@@ -1,19 +1,18 @@
 # project-root(demo-ml-project)/scripts/train.py
 
-
 from datetime import datetime
 from pathlib import Path
 
 import hydra
-from hydra_zen import instantiate, zen
 from omegaconf import OmegaConf
 
 from demo_ml_project.configs.schema import RootConfig
 from demo_ml_project.pipelines.model_training import TrainingPipeline
 from demo_ml_project.utils.logging import configure_logging, get_logger
 
+
 # ──────────────────────────────────────────────
-# Safety check – check the src/ folder or other key markers
+# Safety check – ensure we're in project root
 # ──────────────────────────────────────────────
 PROJECT_MARKERS = [
     Path("conf/config.yaml"),
@@ -29,13 +28,13 @@ if missing:
         "\nAre you sure you're running from the project root?"
     )
 
-#@zen()
-@hydra.main(
-    version_base=None,
-    config_path="../conf",
-    config_name="config"
-)
+
+@hydra.main(version_base=None, config_path="../conf", config_name="config")
 def main(cfg: RootConfig):
+    # Log resolved config (while still DictConfig)
+    logger = get_logger(__name__)
+    logger.debug("Resolved config:\n%s", OmegaConf.to_yaml(cfg, resolve=True))
+
     run_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
     timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 
@@ -48,9 +47,8 @@ def main(cfg: RootConfig):
 
     logger = get_logger(__name__)
     logger.info("Output directory: %s", run_dir)
-    logger.debug("Resolved config:\n%s", OmegaConf.to_yaml(cfg, resolve=True))
 
-    # Pydantic already validated → safe to use
+    # No conversion needed — cfg is already structured & native-typed
     pipeline = TrainingPipeline(cfg)
 
     try:

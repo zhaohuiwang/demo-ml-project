@@ -25,11 +25,18 @@ def prepare_data(df: pd.DataFrame, cfg: RootConfig) -> PreprocessingArtifacts:
         fitted target scaler
     """
 
-    data_cat_cols: list[str] = cfg.data.cat_cols
-    data_num_cols: list[str] = cfg.data.num_cols
-    data_target_cols: list[str] = cfg.data.target_cols
+    # cfg.data.cat_cols, cfg.data.num_cols, cfg.data.target_cols
+    # <class 'omegaconf.listconfig.ListConfig'>
+    # Pandas' __setitem__ (the code behind df[some_key] = value) checks isinstance(key, list)
+    # So need to convert them to list
+    data_cat_cols: list[str] = list(cfg.data.cat_cols)
+    data_num_cols: list[str] = list(cfg.data.num_cols)
+    data_target_cols: list[str] = list(cfg.data.target_cols)
 
-    cat_encoder: OrdinalEncoder = OrdinalEncoder(handle_unknown='use_encoded_value', unknown_value=-1)
+    cat_encoder: OrdinalEncoder = OrdinalEncoder(
+        handle_unknown='use_encoded_value',
+        unknown_value=-1
+        )
     df[data_cat_cols] = cat_encoder.fit_transform(df[data_cat_cols].astype(str))
 
     num_scaler: StandardScaler = StandardScaler()

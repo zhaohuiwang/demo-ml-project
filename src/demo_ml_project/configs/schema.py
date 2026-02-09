@@ -2,70 +2,78 @@
 
 # project-root(demo-ml-project)/demo_ml_project.configs.schema.py
 
-from enum import Enum
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import List, Tuple, Literal, Optional
+from typing import List, Tuple
+from enum import Enum
 
-from pydantic import (
-    BaseModel,
-    Field,
-    field_validator,
-    model_validator,
-    ConfigDict,
-)
+from hydra.core.config_store import ConfigStore
+
 
 class Device(str, Enum):
     CUDA = "cuda"
     CPU = "cpu"
     MPS = "mps"
 
-class DataConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
 
-    train_data_path: str = Field(..., description="Path to parquet file")
-    drop_columns: List[str] = Field(default_factory=list)
-    cat_cols: List[str] = Field(default_factory=list)
-    date_cols: List[str] = Field(default_factory=list)
-    num_cols: List[str] = Field(default_factory=list)
-    target_cols: List[str] = Field(..., min_length=1)
+@dataclass
+class DataConfig:
+    train_data_path: str
+    drop_columns: List[str] = field(default_factory=list)
+    cat_cols: List[str] = field(default_factory=list)
+    date_cols: List[str] = field(default_factory=list)
+    num_cols: List[str] = field(default_factory=list)
+    target_cols: List[str] = field(default_factory=list)
+
+    def __post_init__(self):
+        # Manual validation / coercion
+        self.train_data_path = str(Path(self.train_data_path).resolve())
 
 
-class TrainingConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    test_size: float = Field(0.2, gt=0.0, lt=1.0)
+@dataclass
+class TrainingConfig:
+    test_size: float = 0.2
     random_state: int = 42
-    batch_size: int = Field(64, ge=4)
-    max_epochs: int = Field(100, ge=10)
-    patience: int = Field(10, ge=3)
+    batch_size: int = 64
+    max_epochs: int = 100
+    patience: int = 10
 
+    def __post_init__(self):
+        if not 0 < self.test_size < 1:
+            raise ValueError("test_size must be between 0 and 1")
+        
 
-class OptunaConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    n_trials: int = Field(15, ge=1)
-    n_epochs_per_trial: int = Field(5, ge=1)
-
+@dataclass
+class OptunaConfig:
+    n_trials: int = 15
+    n_epochs_per_trial: int = 5
     layer_range: Tuple[int, int] = (1, 4)
-    units_list: List[int] = Field(default_factory=lambda: [16, 64, 128, 256])
+    units_list: List[int] = field(default_factory=lambda: [16, 64, 128, 256])
     dropout_range: Tuple[float, float] = (0.1, 0.4)
-    lr_range: Tuple[float, float] = (1e-4, 1e-2)
+    lr_range: Tuple[float, float] = (0.0001, 0.01)
+    
+    sampler: str = "tpe"
+    pruner:  str = "median"
 
-    sampler: Literal["tpe", "random", "cmaes"] = "tpe"
-    pruner: Literal["median", "hyperband", "nop"] = "median"
+    def __post_init__(self):
+        lo, hi = self.layer_range
+        if lo >= hi or lo < 1:
+            raise ValueError(f"Invalid layer_range: {self.layer_range}")
+        lo_d, hi_d = self.dropout_range
+        if lo_d >= hi_d or lo_d < 0 or hi_d > 1:
+            raise ValueError(f"Invalid dropout_range: {self.dropout_range}")
+        lo_lr, hi_lr = self.lr_range
+        if lo_lr >= hi_lr or lo_lr <= 0:
+            raise ValueError(f"Invalid lr_range: {self.lr_range}")
+        
+        # Similar checks for dropout_range, lr_range, etc.
+        if self.n_trials < 1:
+            raise ValueError("n_trials must be >= 1")
 
-    @field_validator("layer_range", "dropout_range", "lr_range")
-    @classmethod
-    def check_range(cls, v: Tuple):
-        lo, hi = v
-        if lo >= hi:
-            raise ValueError(f"Lower bound must be < upper bound (got {lo} ≥ {hi})")
-        return v
 
 
-class ExportConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+@dataclass
+class ExportConfig:
     dir: str = "model_export"
     weights: str = "champion_weights.pth"
     in_scaler: str = "input_scaler.pkl"
@@ -74,28 +82,33 @@ class ExportConfig(BaseModel):
     metadata: str = "metadata.json"
 
 
-class RootConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
+@dataclass
+class RootConfig:
     data: DataConfig
     training: TrainingConfig
     optuna: OptunaConfig
     export: ExportConfig
 
-    project_root: Optional[Path] = None
+    project_root: Path | None = None
     seed: int = 42
     device: Device = Device.CUDA
 
-    @model_validator(mode="after")
-    def resolve_paths(self):
+    def __post_init__(self):
         if self.project_root is None:
-            raise ValueError("project_root must be set (usually via hydra)")
+            raise ValueError("project_root must be set")
         root = self.project_root
 
+        # Path resolution (like your old @model_validator)
         if not Path(self.data.train_data_path).is_absolute():
             self.data.train_data_path = str(root / self.data.train_data_path)
 
         if not Path(self.export.dir).is_absolute():
             self.export.dir = str(root / self.export.dir)
 
-        return self
+# Register
+cs = ConfigStore.instance()
+cs.store(name="config", node=RootConfig)
+cs.store(group="data", name="default", node=DataConfig)
+cs.store(group="training", name="default", node=TrainingConfig)
+cs.store(group="optuna", name="default", node=OptunaConfig)
+cs.store(group="export", name="default", node=ExportConfig)
