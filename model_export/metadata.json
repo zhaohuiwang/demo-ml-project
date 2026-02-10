@@ -1,14 +1,12 @@
 {
   "best_params": {
-    "n_layers": 3,
-    "n_units_l0": 256,
-    "n_units_l1": 16,
-    "n_units_l2": 64,
-    "dropout": 0.11135480934731097,
+    "n_layers": 1,
+    "n_units_l0": 128,
+    "dropout": 0.1547687969682537,
     "optimizer": "RMSprop",
-    "lr": 0.008424120209893284
+    "lr": 0.02203964957062517
   },
-  "best_value": 0.10567665845155716,
+  "best_value": 0.11236579120159149,
   "emb_sizes": [
     [
       2,
@@ -49,8 +47,8 @@
     "melanoma_of_the_skin"
   ],
   "val_metrics": {
-    "val_rmse": 1.0250649535145442,
-    "val_mse": 1.0507581589237744
+    "val_rmse": 1.0470906814359435,
+    "val_mse": 1.0963988951499888
   },
-  "timestamp": "2026-02-09T12:01:35.751098"
+  "timestamp": "2026-02-09T14:43:09.955947"
 }

@@ -1,8 +1,9 @@
 
 
-dir: model_export
-weights: champion_weights.pth
-in_scaler: input_scaler.pkl
+dir: model_export/${now:%Y%m%d_%H%M%S}
+
+weights: final_model_weights.pth
+in_scaler: num_scaler.pkl
 tar_scaler: target_scaler.pkl
-cat_encoder: categorical_input_encoders.pkl
-metadata: metadata.json
+cat_encoder: cat_encoder.pkl
+metadata: run_metadata.json

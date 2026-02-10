@@ -33,6 +33,8 @@ dependencies = [
     "statsmodels>=0.14.6",
     "feast>=0.59.0",
     "hydra-zen>=0.16.0",
+    "pytest-cov>=7.0.0",
+    "mlflow>=3.9.0",
 ]
 
 [project.scripts]

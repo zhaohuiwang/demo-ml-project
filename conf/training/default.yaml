@@ -3,5 +3,12 @@
 test_size: 0.2
 random_state: 42
 batch_size: 64
-max_epochs: 100
-patience: 10
+max_epochs: 200
+patience: 12
+
+cv:
+  enabled: false         # Set to true when you want to use CV during HPO
+  n_folds: 5             # Common values: 3, 5 (rarely 10 for deep learning)
+  strategy: kfold        # Options we'll support: "kfold", "timeseries"
+  shuffle: true          # Only used if strategy = kfold
+  random_state: 42       # For reproducible splits

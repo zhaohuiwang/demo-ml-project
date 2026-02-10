@@ -1,102 +1,185 @@
-Separate code from data
+# Demo ML Project – Tabular Multi-Target Regression
 
-`src/my_ml_project/` → reusable library code
+A clean, configurable, and leakage-safe PyTorch-based pipeline for multi-target regression on tabular data.
 
-`data/`, `models/`, `notebooks/` → runtime artifacts
+## Features
 
-Never import from `data/` or `models/`.
+- Hydra for powerful and reproducible configuration management
+- Optuna hyperparameter optimization (with optional k-fold / time-series cross-validation)
+- Strict prevention of data leakage (preprocessing fitted only on training portions)
+- Categorical features via learnable embeddings + numerical features
+- Early stopping with best-model checkpointing
+- Export of model weights, fitted preprocessors, and metadata for easy inference
+- Clear separation between short HPO training and full final training
+- Multi-target regression support out of the box
 
-Use` src/` layout (important for packaging)
+## Project Structure
+```
+demo-ml-project/
+├── conf/                     # Hydra configuration files
+│   ├── config.yaml
+│   ├── data/
+│   ├── training/             # default + cv5.yaml, cv_timeseries.yaml, etc.
+│   ├── optuna/
+│   └── export/
+├── data/
+│   └── processed/            # your Parquet / CSV training files
+├── model_export/             # automatically created – contains saved models
+├── scripts/
+│   ├── train.py              # main training entry point
+│   └── inference.py          # example script for batch predictions
+├── src/
+│   └── demo_ml_project/
+│       ├── configs/          # Pydantic schema & artifacts
+│       ├── data/             # dataset class + preprocessing logic
+│       ├── models/           # neural network definition
+│       ├── optimization/     # Optuna objective function
+│       ├── pipelines/        # core training pipeline
+│       └── utils/            # logging, early stopping, etc.
+├── README.md
+└── pyproject.toml          # or requirements.txt
+```
+## Quick Start
 
-This prevents accidental imports from the project root.
+### 1. Installation
 
-Pipelines orchestrate, modules do
-
-`models/train.py` → pure ML logic (Rules: no file paths, no CLI parsing, no environment logic, pure Python, easy to test. fit model, return model, unit-testable, reusable from notebooks, pipelines, APIs)
-
-`pipelines/training_pipeline.py` → orchestration (this file connects components, call steps in order: load data, build features, train model, evaluate, return artifacts.  no CLI parsing, no hardcoded paths, read config, returns results)
-
-`scripts/run_training.py` → entry point (impure code: CLI, config, env vars, file paths, saving artifacts.) You run it like: `python3 scripts/run_training.py -data-path data/processed/train.csv --model-out artifacts/models/model_a.pkl` 
-Handles I/O, thin wrapper, easy to swap with Airflow, perfect, kuberflow later
-
-How They Call Each Other (Flow)
 ```bash
-TRAIN
-scripts/run_training.py
-  ↓
-pipelines/training_pipeline.py
-  ↓
-models/train.py
+# Recommended: use a virtual environment
+python -m venv .venv
+source .venv/bin/activate    # On Windows: .venv\Scripts\activate
 
-INFERENCE
-scripts/run_inference.py
-  ↓
-pipelines/inference_pipeline.py
-  ↓
-models/predict.py
+# Install dependencies
+pip install -r requirements.txt
 
+# or with uv (faster):
+# uv pip install -r requirements.txt
 ```
-Dependencies flow inwardm never outward. If you delete `scripts/`, your package should still be importable and testable.
+### 2. Training
+Run with default settings (single train/val split, no CV):
+```Bash
+python scripts/train.py
+```
+Use a pre-defined CV variant from conf/training/cv3.yaml
+```Bash
+# If you created conf/training/cv3.yaml with the settings you want
+python scripts/train.py training=cv3
+```
+Time runs for comparison:
+```Bash
+time python scripts/train.py training.cv.enabled=true training.cv.n_folds=3
+time python scripts/train.py
+```
+Override parameters directly:
+```Bash
+python scripts/train.py \
+  training.cv.enabled=true \
+  training.cv.n_folds=3 \
+  optuna.n_trials=50 \
+  training.batch_size=128
+```
+### 3. Inference / Predictions
+After training, use the exported artifacts:
+```Bash
+python scripts/inference.py \
+  --export-dir model_export/2025xxxx_xxxxxx \
+  --input-csv path/to/new_data.csv \
+  --output-csv predictions.csv
+```
+See `scripts/inference.py` for more options (batch size, device, etc.).
+Main Technologies
 
-🔒 Training and inference are fully decoupled
+. PyTorch – model & training
+. Hydra + OmegaConf – configuration
+. Optuna – hyperparameter optimization
+. scikit-learn – preprocessing (OrdinalEncoder, StandardScaler)
+. pandas – data handling
+. Pydantic – strict config validation
+. joblib / torch.save – artifact persistence
+### How to run the tests
+```Bash
+# From project root
+pytest -vv
 
-🔁 Same model definition, different pipelines
+# Run only data processing tests
+pytest tests/test_data_processing.py
 
-🧪 Easy to test inference with dummy tensors
+# With coverage
+pytest --cov=src/demo_ml_project
 
-☁️ Drop-in replacement for batch jobs or APIs
+# Fast run (skip slow/mark integration)
+pytest -m "not integration"
+```
+### MLflow
+Update TrainingPipeline class — add MLflow logging in key places. After thr run, MLflow stores everything in a folder (mlruns/)
+```Bash
+# Re-run training:
+python scripts/train.py
+# View the UI
+mlflow ui
+# open the http link
 
-📦 No Hydra leakage into core logic
+# Solution to ERROR:    [Errno 98] Address already in use
+# List processes using port 5000
+lsof -i :5000
+# or (more concise)
+netstat -tuln | grep 5000
+# or (if you have ss installed)
+ss -tuln | grep 5000
 
-Your pipeline should call logic, not contain it.
-```python
-# pipelines/training_pipeline.py
-from my_ml_project.data.loaders import load_data
-from my_ml_project.models.train import train
+kill -9 12345   # replace 12345 with your PID
 
-def run():
-    X, y = load_data()
-    model = train(X, y)
-    return model
+# Now retry:
+mlflow ui
 ```
 
-pyproject.toml (Minimal Example)
-```toml
-[project]
-name = "my-ml-project"
-version = "0.1.0"
-description = "ML project for packaging"
-requires-python = ">=3.9"
-dependencies = [
-    "numpy",
-    "pandas",
-    "scikit-learn"
-]
+### Docker build & run
+```Bash
+# Build
+DOCKER_BUILDKIT=1 docker build -t demo-ml:latest .
 
-[build-system]
-requires = ["setuptools", "wheel"]
-build-backend = "setuptools.build_meta"
+# Train (GPU + volumes)
+docker run --rm -it --gpus all \
+  -v $(pwd)/mlruns:/app/mlruns \
+  -v $(pwd)/model_export:/app/model_export \
+  -v $(pwd)/data:/app/data \
+  demo-ml:latest
+  ```
 
-[tool.setuptools.packages.find]
-where = ["src"]
+```Bash
+# Build and start everything
+docker compose up --build
+# Run training in background
+docker compose up -d training
+# Run inference (override command)
+docker compose run --rm training \
+  python scripts/inference.py \
+    --export-dir /app/model_export/$(ls -t /app/model_export | head -1) \
+    --input-csv /app/data/new_data.csv \
+    --output-csv /app/predictions.csv
+# Stop everything
+docker compose down
+# View MLflow UIAlways at http://localhost:5000 — even after restart (data persists in ./mlruns volume)
 ```
-Install locally:
-```bash
-pip install -e .
-```scripts/run_training.py
-        ↓
-pipelines/training_pipeline.py
-        ↓
-models/train.py
+### Philosophy & Design Choices
+
+. No data leakage: preprocessing is always fitted only on training data/folds
+. Reproducibility: fixed seeds + versioned configs + logged metadata
+. Production-ready export: model weights + all necessary preprocessors + run info
+. Flexibility: toggle CV, change search space, model architecture via config
+. Two-phase training: short trials during HPO → full training for final model
+
+### Next Steps / Possible Improvements
+
+. Add MLflow / Weights & Biases logging
+. Support for target inverse scaling in inference
+. Stratified splitting for imbalanced regression targets
+. Learning rate scheduler & better optimizers
+. Automated tests for pipeline components
+. Docker / cloud deployment example
+
+### License
+MIT License (or replace with your preferred license)
+Happy modeling!
+Questions / improvements → feel free to open an issue or PR.
 
 
-Optional but Very Useful
-CLI entry point
-```toml
-[project.scripts]
-my-ml = "my_ml_project.cli:main"
-```
-```bash
-my-ml train
-my-ml predict
-```

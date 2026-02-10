@@ -1,8 +1,9 @@
 
 # project-root(demo-ml-project)/conf/config.yaml
+# conf/config.yaml
 
 defaults:
-  - _self_            # ← important: root config overrides come last
+  - _self_ # important: root config overrides come last
   - data: default
   - training: default
   - optuna: default
@@ -10,6 +11,12 @@ defaults:
 
 project_root: ${hydra:runtime.cwd} # or use hydra.utils.get_original_cwd() if needed
 
-# Optional global settings
 seed: 42
-device: cuda
+device: cuda   # or auto-detect in code
+
+hydra:
+  run:
+    dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+  sweep:
+    dir: sweeps/${now:%Y-%m-%d}
+    subdir: ${hydra.job.name}.${now:%H-%M-%S}
