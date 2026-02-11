@@ -6,8 +6,8 @@
 import pandas as pd
 from sklearn.preprocessing import OrdinalEncoder, StandardScaler
 
-from ..configs.schema import RootConfig
-from ..configs.artifacts import PreprocessingArtifacts
+from ..configs.training.schema import RootConfig
+from ..configs.training.artifacts import PreprocessingArtifacts
 
 
 def prepare_data(

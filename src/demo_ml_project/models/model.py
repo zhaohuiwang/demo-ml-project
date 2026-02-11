@@ -17,7 +17,7 @@ class DynamicTabularModel(nn.Module):
 
     def __init__(
         self,
-        emb_sizes: list[tuple[int, int]],           # (num_categories, embedding_dim) per cat feature
+        emb_sizes: list[tuple[int, int]], # (num_categories, embedding_dim) per cat feature
         n_numeric: int,
         n_targets: int,
         hidden_dims: list[int],

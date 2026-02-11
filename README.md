@@ -64,6 +64,9 @@ Use a pre-defined CV variant from conf/training/cv3.yaml
 # If you created conf/training/cv3.yaml with the settings you want
 python scripts/train.py training=cv3
 ```
+Note: on MacOS Dataloader num_workers=0, persistent_workers=False whereas on Ubuntu Dataloader num_workers=2, persistent_workers=True
+
+
 Time runs for comparison:
 ```Bash
 time python scripts/train.py training.cv.enabled=true training.cv.n_folds=3

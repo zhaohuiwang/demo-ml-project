@@ -1,0 +1,25 @@
+
+defaults:
+  - _self_
+
+# Where to load the model & preprocessors from
+load_from: local                   # or "mlflow"
+
+local:
+  export_dir: model_export/latest  # resolved relative to project root
+
+mlflow:
+  model_name: TabularMultiTargetRegressor
+  version: latest
+
+input:
+  path: data/new_samples.csv
+  format: auto                     # auto, csv, parquet
+
+output:
+  path: predictions.csv
+  include_index: true
+  columns_prefix: pred_
+
+batch_size: 256
+device: null                       # null = auto (cuda > mps > cpu)

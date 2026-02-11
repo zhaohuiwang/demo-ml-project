@@ -3,7 +3,7 @@
 import pytest
 
 from demo_ml_project.pipelines.model_training import TrainingPipeline
-from demo_ml_project.configs.schema import RootConfig
+from demo_ml_project.configs.training.schema import RootConfig
 
 
 @pytest.mark.integration

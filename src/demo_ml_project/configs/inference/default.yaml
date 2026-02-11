@@ -1,5 +1,0 @@
-
-model_path: models/model.pt
-batch_size: 128
-device: cpu
-version: v1

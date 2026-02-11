@@ -1,0 +1,5 @@
+
+project_root: ${hydra:runtime.cwd} # or use hydra.utils.get_original_cwd() if needed
+
+seed: 42
+device: cuda   # or auto-detect in code

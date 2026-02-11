@@ -1,42 +1,30 @@
-# scripts/promote_model.py
-
-import mlflow
-from mlflow.tracking import MlflowClient
-
-def promote_to_staging(model_name: str, version: str):
-    client = MlflowClient()
-
-    client.transition_model_version_stage(
-        name=model_name,
-        version=version,
-        stage="Staging",
-        archive_existing_versions=True,
-    )
-
-# def promote_to_prod(model_name: str, version: str):
-#     client = MlflowClient()
-
-#     client.transition_model_version_stage(
-#         name=model_name,
-#         version=version,
-#         stage="Production",
-#         archive_existing_versions=True,
-#     )
 
 
-if __name__ == "__main__":
-    promote_to_staging("my_ml_project", "3")
+from fastapi import FastAPI, UploadFile, File
+from pydantic import BaseModel
+import mlflow.pytorch
+import pandas as pd
+import torch
+from demo_ml_project.data.processing import prepare_data
+# ... import your config/schema if needed
 
+app = FastAPI(title="Tabular Multi-Target Predictor")
 
-# Promote DEV → STAGING (Automated)
-# This happens via CI / script / job, not training.
-# Promotion is never manual vibes.
-# It must be based on explicit rules.
-# Typical gates:
-# metrics threshold (e.g. accuracy >= 0.92 and latency <= 50ms)
-# regression test vs prod
-# data drift checks
-# approval (human or CI)
+model = mlflow.pytorch.load_model("models:/TabularMultiTargetRegressor/latest")
 
-# Previous staging model archived
-# New version now Staging
+@app.post("/predict")
+async def predict(file: UploadFile = File(...)):
+    df = pd.read_csv(file.file)
+    # Preprocess (fit=False, use saved preprocessors if you exported them)
+    # For simplicity, assume same columns; in production load scalers/encoder
+    processed = prepare_data(df, cfg=None, fit=False, ...)  # adapt as needed
+    ds = InputDataset(processed.processed_df, ...)
+    loader = torch.utils.data.DataLoader(ds, batch_size=256, shuffle=False)
+
+    preds = []
+    with torch.no_grad():
+        for x_cat, x_num, _ in loader:
+            out = model(x_cat.to(model.device), x_num.to(model.device))
+            preds.append(out.cpu().numpy())
+
+    return {"predictions": np.concatenate(preds).tolist()}

@@ -1,0 +1,9 @@
+
+defaults:
+  - _self_ # important: root config overrides come last
+  - global: default
+  - data: default # to include the default.yaml inside the data/ config group.
+  - export: default
+  - hydra: default
+  - optuna: default
+  - training: default

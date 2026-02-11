@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 from pathlib import Path
 
-from demo_ml_project.configs.schema import (
+from demo_ml_project.configs.training.schema import (
     RootConfig,
     DataConfig,
     TrainingConfig,

@@ -1,8 +1,5 @@
 
 # project-root(demo-ml-project)/src/demo_ml_project/pipelines/model_training.py
-import mlflow
-import mlflow.pytorch
-import mlflow.sklearn
 
 import json
 from datetime import datetime
@@ -19,8 +16,8 @@ from sklearn.model_selection import train_test_split
 from optuna.samplers import TPESampler
 from optuna.pruners import MedianPruner, HyperbandPruner
 
-from ..configs.schema import RootConfig
-from ..configs.artifacts import PreprocessingArtifacts, TrainingArtifacts
+from ..configs.training.schema import RootConfig
+from ..configs.training.artifacts import PreprocessingArtifacts, TrainingArtifacts
 from ..data.processing import prepare_data
 from ..data.dataset import InputDataset
 from ..models.model import DynamicTabularModel
@@ -29,8 +26,11 @@ from ..utils.early_stopping import EarlyStopping
 from ..utils.logging import get_logger
 from ..utils.helpers import flatten_dict
 
+import mlflow
+mlflow.autolog()  # MLflow automatic Logging
 
 class TrainingPipeline:
+
     def __init__(self, cfg: RootConfig):
         self.cfg = cfg
         self.logger = get_logger(self.__class__.__name__)
@@ -42,84 +42,106 @@ class TrainingPipeline:
         self._val_loader: DataLoader | None = None
         self._export_dir: Path | None = None
 
-        # MLflow setup
-        mlflow.set_tracking_uri("file:./mlruns")
-        mlflow.set_experiment("demo-ml-tabular-regression")
-
     def run(self) -> None:
-        """
-        Orchestrates the full pipeline with MLflow tracking:
-        - Starts MLflow run
-        - Logs config
-        - Runs core training
-        - Evaluates
-        - Exports artifacts to disk
-        - Logs model + artifacts to MLflow
-        - Registers model (if successful)
-        """
+        artifacts = self.train_only()
+
         self._export_dir = Path(self.cfg.export.dir)
         self._export_dir.mkdir(parents=True, exist_ok=True)
 
-        with mlflow.start_run(run_name=f"run-{datetime.now().strftime('%Y%m%d-%H%M%S')}") as mlflow_run:
-            # 1. Log full flattened config early
-            flat_cfg = flatten_dict(self.cfg.model_dump())
-            mlflow.log_params(flat_cfg)
-            self.logger.info(f"MLflow run started: {mlflow_run.info.run_id}")
+        metrics = self.evaluate(artifacts.model)
+        self.logger.info(f"Final validation metrics: {metrics}")
 
-            # 2. Core training (pure logic, no MLflow calls inside)
-            artifacts = self.train_only()
+        self._export(artifacts, metrics)
+        self.logger.info("Full training pipeline completed ✓")
 
-            # 3. Evaluate
-            metrics = self.evaluate(artifacts.model)
-            self.logger.info(f"Final validation metrics: {metrics}")
-            mlflow.log_metrics(metrics)
+    ### MLflow manual Logging - Complete Control, Custom Workflow  
+    # import mlflow
+    # import mlflow.pytorch
+    # import mlflow.sklearn  
+    # def __init__(self, cfg: RootConfig):
+    #     self.cfg = cfg
+    #     self.logger = get_logger(self.__class__.__name__)
+    #     self.device = torch.device(
+    #         "cuda" if torch.cuda.is_available() else
+    #         "mps" if torch.backends.mps.is_available() else
+    #         "cpu"
+    #     )
+    #     self._val_loader: DataLoader | None = None
+    #     self._export_dir: Path | None = None
 
-            # 4. Export all artifacts to disk first (creates files)
-            self._export(artifacts, metrics)
+    #     # MLflow setup
+    #     mlflow.set_tracking_uri("file:./mlruns")
+    #     mlflow.set_experiment("demo-ml-tabular-regression")
 
-            # 5. Log the model as proper MLflow PyTorch model (with auto-registration)
-            registered_model_name = "TabularMultiTargetRegressor"
-            try:
-                mlflow.pytorch.log_model(
-                    artifacts.model,
-                    artifact_path="pytorch_model",
-                    registered_model_name=registered_model_name,
-                    metadata={
-                        "description": "Multi-target regression model for health/economic indicators",
-                        "best_cv_loss": artifacts.study.best_value,
-                        "framework": "PyTorch",
-                        "run_id": mlflow_run.info.run_id,
-                    },
-                )
-                self.logger.info(f"Model registered under: {registered_model_name}")
-            except Exception as e:
-                self.logger.warning(f"Failed to log/register model: {e}")
-                # Continue — don't crash the whole run
+    # def run(self) -> None:
+    #     """
+    #     Orchestrates the full pipeline with MLflow tracking:
+    #     - Starts MLflow run
+    #     - Logs config
+    #     - Runs core training
+    #     - Evaluates
+    #     - Exports artifacts to disk
+    #     - Logs model + artifacts to MLflow
+    #     - Registers model (if successful)
+    #     """
+    #     self._export_dir = Path(self.cfg.export.dir)
+    #     self._export_dir.mkdir(parents=True, exist_ok=True)
 
-            # 6. Log raw weights + other artifacts (non-overlapping paths)
-            mlflow.log_artifact(
-                self._export_dir / self.cfg.export.weights,
-                artifact_path="raw_weights"
-            )
-            mlflow.log_artifact(
-                self._export_dir / self.cfg.export.in_scaler,
-                artifact_path="preprocessors"
-            )
-            mlflow.log_artifact(
-                self._export_dir / self.cfg.export.tar_scaler,
-                artifact_path="preprocessors"
-            )
-            mlflow.log_artifact(
-                self._export_dir / self.cfg.export.cat_encoder,
-                artifact_path="preprocessors"
-            )
-            mlflow.log_artifact(
-                self._export_dir / self.cfg.export.metadata,
-                artifact_path="metadata"
-            )
+    #     with mlflow.start_run(run_name=f"run-{datetime.now().strftime('%Y%m%d-%H%M%S')}") as mlflow_run:
+    #         # 1. Log full flattened config early
+    #         flat_cfg = flatten_dict(self.cfg.model_dump())
+    #         mlflow.log_params(flat_cfg)
+    #         self.logger.info(f"MLflow run started: {mlflow_run.info.run_id}")
 
-            self.logger.info("Pipeline completed. MLflow run logged.")
-            self.logger.info(f"View in UI: mlflow ui → http://127.0.0.1:5000/#/experiments/0/runs/{mlflow_run.info.run_id}")
+    #         # 2. Core training (pure logic, no MLflow calls inside)
+    #         artifacts = self.train_only()
+
+    #         # 3. Evaluate
+    #         metrics = self.evaluate(artifacts.model)
+    #         self.logger.info(f"Final validation metrics: {metrics}")
+    #         mlflow.log_metrics(metrics)
+
+    #         # 4. Export all artifacts to disk first (creates files)
+    #         self._export(artifacts, metrics)
+
+    #         # 5. Log the model as proper MLflow PyTorch model (with auto-registration)
+    #         registered_model_name = "TabularMultiTargetRegressor"
+    #         try:
+    #             mlflow.pytorch.log_model(
+    #                 artifacts.model,
+    #                 name="pytorch_model",
+    #                 # export_model=True,
+    #                 registered_model_name=registered_model_name,
+    #                 metadata={
+    #                     "description": "Multi-target regression model for health/economic indicators",
+    #                     "best_cv_loss": artifacts.study.best_value,
+    #                     "framework": "PyTorch",
+    #                     "run_id": mlflow_run.info.run_id,
+    #                 },
+    #             )
+    #             self.logger.info(f"Model registered under: {registered_model_name}")
+    #         except Exception as e:
+    #             self.logger.warning(f"Failed to log/register model: {e}")
+    #             # Continue — don't crash the whole run
+
+
+    #         artifacts_map = {
+    #             "raw_weights":   [self.cfg.export.weights],
+    #             "preprocessors": [self.cfg.export.in_scaler, self.cfg.export.tar_scaler, self.cfg.export.cat_encoder],
+    #             "metadata":      [self.cfg.export.metadata],
+    #         }
+
+    #         for artifact_path, filenames in artifacts_map.items():
+    #             for name in filenames:
+    #                 local_path = self._export_dir / name
+    #                 try:
+    #                     mlflow.log_artifact(local_path, artifact_path)
+    #                 except Exception as e:
+    #                     self.logger.warning(f"Failed to log/register artifact: {e}") 
+
+    #         self.logger.info("Pipeline completed. MLflow run logged.")
+    #         self.logger.info(f"View in UI: mlflow ui → http://127.0.0.1:5000/#/experiments/0/runs/{mlflow_run.info.run_id}")
+
 
     def train_only(self) -> TrainingArtifacts:
         """

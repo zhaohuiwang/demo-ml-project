@@ -1,0 +1,6 @@
+
+run:
+  dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
+sweep:
+  dir: sweeps/${now:%Y-%m-%d}
+  subdir: ${hydra.job.name}.${now:%H-%M-%S}

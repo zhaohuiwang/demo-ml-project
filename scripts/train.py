@@ -6,7 +6,7 @@ from pathlib import Path
 import hydra
 from omegaconf import OmegaConf
 
-from demo_ml_project.configs.schema import RootConfig
+from demo_ml_project.configs.training.schema import RootConfig
 from demo_ml_project.pipelines.model_training import TrainingPipeline
 from demo_ml_project.utils.logging import configure_logging, get_logger
 
@@ -15,7 +15,7 @@ from demo_ml_project.utils.logging import configure_logging, get_logger
 # Safety check – ensure we're in project root
 # ──────────────────────────────────────────────
 PROJECT_MARKERS = [
-    Path("conf/config.yaml"),
+    #Path("conf/training/default.yaml"),
     Path("src/demo_ml_project/__init__.py"),
     Path("scripts/train.py"),
 ]
@@ -29,7 +29,11 @@ if missing:
     )
 
 
-@hydra.main(version_base=None, config_path="../conf", config_name="config")
+@hydra.main(
+    version_base=None,
+    config_path="../conf",
+    config_name="training_conf" 
+)
 def main(hydra_cfg: RootConfig):
 
     # Eagerly resolves all interpolations in place.
@@ -65,7 +69,6 @@ def main(hydra_cfg: RootConfig):
         logger.exception("Training failed")
         raise
 
-
 if __name__ == "__main__":
     main()
 
@@ -75,3 +78,4 @@ if __name__ == "__main__":
 # # Dependency
 # project-root(demo-ml-project)/conf/config.yaml
 # /src/demo_ml_project/pipelines/model_training.py
+

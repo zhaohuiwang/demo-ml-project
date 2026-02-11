@@ -10,7 +10,7 @@ import pandas as pd
 from torch.utils.data import DataLoader
 from sklearn.model_selection import KFold, TimeSeriesSplit
 
-from ..configs.schema import RootConfig
+from ..configs.training.schema import RootConfig
 from ..data.processing import prepare_data
 from ..data.dataset import InputDataset
 from ..models.model import DynamicTabularModel
@@ -41,6 +41,7 @@ def objective(
         for i in range(n_layers)
     ]
     dropout = trial.suggest_float("dropout", *cfg.optuna.dropout_range)
+    # syntax: trial.suggest_float(name, low, high, log=False) # Each trial gets a different value
 
     optimizer_name = trial.suggest_categorical("optimizer", ["Adam", "SGD", "RMSprop"])
     lr = trial.suggest_float("lr", *cfg.optuna.lr_range, log=True)
@@ -151,6 +152,11 @@ def objective(
             optimizer = optim.RMSprop(trial_model.parameters(), lr=lr)
 
         criterion = nn.MSELoss() if task == "regression" else nn.BCEWithLogitsLoss()
+
+        # Task type	                Correct loss
+        # Multi-class (1 label)     CrossEntropyLoss
+        # Multi-label	            BCEWithLogitsLoss
+        # Multi-target regression	MSELoss
 
         early_stopping = EarlyStopping(patience=cfg.training.patience)
 

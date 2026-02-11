@@ -1,3 +1,0 @@
-
-train_path: data/processed/train.pt
-inference_path: data/processed/test.pt

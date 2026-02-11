@@ -178,3 +178,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Personal working progress notes
+zw_notes/
