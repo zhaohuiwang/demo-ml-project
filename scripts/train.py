@@ -15,7 +15,7 @@ from demo_ml_project.utils.logging import configure_logging, get_logger
 # Safety check – ensure we're in project root
 # ──────────────────────────────────────────────
 PROJECT_MARKERS = [
-    #Path("conf/training/default.yaml"),
+    Path("conf/training_conf.yaml"),
     Path("src/demo_ml_project/__init__.py"),
     Path("scripts/train.py"),
 ]

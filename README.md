@@ -119,7 +119,8 @@ Update TrainingPipeline class — add MLflow logging in key places. After thr ru
 python scripts/train.py
 # View the UI
 mlflow ui
-# open the http link
+# FastAPI-based Uvicorn ASGI, runs with multiple worker processes for concurrency
+# open the http link, default http://localhost:5000
 
 # Solution to ERROR:    [Errno 98] Address already in use
 # List processes using port 5000
@@ -134,6 +135,21 @@ kill -9 12345   # replace 12345 with your PID
 # Now retry:
 mlflow ui
 ```
+# clean restart MLflow server
+```Bash
+# Stop everything
+pkill -f mlflow
+# then restart clean
+mlflow server \
+  --backend-store-uri sqlite:///mlflow.db \
+  --default-artifact-root ./mlruns \
+  --host 127.0.0.1 \
+  --port 5000
+# Then rerun your script
+```
+
+### Inference 
+MLflow UI > Models > Click a version > Asliase: Add > champion > Run inference script
 
 ### Docker build & run
 ```Bash
