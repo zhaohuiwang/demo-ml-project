@@ -179,6 +179,39 @@ docker compose run --rm training \
 docker compose down
 # View MLflow UIAlways at http://localhost:5000 — even after restart (data persists in ./mlruns volume)
 ```
+
+
+
+### Input / Outputs
+
+```
+Training:
+ ├── Hydra run dir:  # <project_root>/outputs/YYYY-MM-DD/HH-MM-SS/
+ │     └── logs/
+ │
+ ├── Local export dir # model_export/ Configured via: yaml files inside  conf/
+ │     ├── weights
+ │     ├── preprocessors
+ │     └── metadata
+ │  
+ └── MLflow     # mlartifacts/, mlruns/, http://127.0.0.1:5000 
+       ├── run params
+       ├── metrics
+       ├── artifacts
+       └── model registry
+
+Inference:
+ ├── Hydra run dir
+ │     ├── predictions.csv
+ │     └── logs/
+ │
+ ├── Reads from:
+ │     ├── local export dir
+ │     └── OR MLflow registry
+ │
+ └── No MLflow logging during inference (currently)
+
+```
 ### Philosophy & Design Choices
 
 . No data leakage: preprocessing is always fitted only on training data/folds
