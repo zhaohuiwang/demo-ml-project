@@ -28,6 +28,7 @@ def main(hydra_cfg):
     # Logging setup
     run_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)
     timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+
     configure_logging(
         log_dir=run_dir / "logs",
         log_file=f"inference_{timestamp}.log",
@@ -35,13 +36,17 @@ def main(hydra_cfg):
     )
 
     logger = get_logger(__name__)
-    logger.info("Inference pipeline starting...")
     logger.debug("Resolved config:\n%s", OmegaConf.to_yaml(hydra_cfg))
 
     pipeline = InferencePipeline(cfg)
+
+    logger.info(f"Hydra run directory: {run_dir}")
+    logger.info("Inference pipeline starting...")
+
     try:
         pipeline.run()
         logger.info("Inference completed ✓")
+        logger.info("Hydra output directory: %s", run_dir)
     except Exception:
         logger.exception("Inference failed")
         raise

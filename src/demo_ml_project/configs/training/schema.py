@@ -106,19 +106,17 @@ class OptunaConfig(BaseModel):
 
 
 class ExportConfig(BaseModel):
-    """Paths and filenames for model export artifacts."""
+    dir: Path = Field(..., description="Base export directory")
+    weights: str = Field("model_state.pth", description="Model state dict filename")
+    input_scaler: str = Field("input_scaler.joblib", description="Input/feature scaler")
+    target_scaler: str = Field("target_scaler.joblib", description="Target scaler")
+    cat_encoder: str = Field("cat_encoder.joblib", description="Categorical encoder")
+    metadata: str = Field("metadata.json", description="Metadata JSON")
 
-    dir: Path = Field(
-        default_factory=lambda: Path(f"model_export/{datetime.now():%Y%m%d_%H%M%S}"),
-        description="Export directory with timestamp"
-    )
-    weights:     str = Field("final_model_weights.pth")
-    in_scaler:   str = Field("num_scaler.pkl")
-    tar_scaler:  str = Field("target_scaler.pkl")
-    cat_encoder: str = Field("cat_encoder.pkl")
-    metadata:    str = Field("run_metadata.json")
-
-    model_config = ConfigDict(extra="forbid")
+    model_config = {
+        "extra": "forbid",          # keep this strict → helps catch typos
+        "frozen": False,
+    }
 
     @field_validator("dir", mode="before")
     @classmethod

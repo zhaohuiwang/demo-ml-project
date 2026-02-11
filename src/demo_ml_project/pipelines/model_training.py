@@ -10,14 +10,15 @@ import joblib
 import optuna
 import pandas as pd
 import torch
-from torch.utils.data import DataLoader
-from sklearn.model_selection import train_test_split
 
+from hydra.core.hydra_config import HydraConfig
+from sklearn.model_selection import train_test_split
+from torch.utils.data import DataLoader
 from optuna.samplers import TPESampler
 from optuna.pruners import MedianPruner, HyperbandPruner
 
 from ..configs.training.schema import RootConfig
-from ..configs.training.artifacts import PreprocessingArtifacts, TrainingArtifacts
+from ..configs.training.artifacts import TrainingArtifacts
 from ..data.processing import prepare_data
 from ..data.dataset import InputDataset
 from ..models.model import DynamicTabularModel
@@ -26,34 +27,6 @@ from ..utils.early_stopping import EarlyStopping
 from ..utils.logging import get_logger
 from ..utils.helpers import flatten_dict
 
-# # MLflow auto
-# import mlflow
-# mlflow.autolog()  # MLflow automatic Logging
-
-# class TrainingPipeline:
-
-#     def __init__(self, cfg: RootConfig):
-#         self.cfg = cfg
-#         self.logger = get_logger(self.__class__.__name__)
-#         self.device = torch.device(
-#             "cuda" if torch.cuda.is_available() else
-#             "mps" if torch.backends.mps.is_available() else
-#             "cpu"
-#         )
-#         self._val_loader: DataLoader | None = None
-#         self._export_dir: Path | None = None
-
-#     def run(self) -> None:
-#         artifacts = self.train_only()
-
-#         self._export_dir = Path(self.cfg.export.dir)
-#         self._export_dir.mkdir(parents=True, exist_ok=True)
-
-#         metrics = self.evaluate(artifacts.model)
-#         self.logger.info(f"Final validation metrics: {metrics}")
-
-#         self._export(artifacts, metrics)
-#         self.logger.info("Full training pipeline completed ✓")
 
 ### MLflow manual Logging - Complete Control, Custom Workflow  
 import mlflow
@@ -92,7 +65,7 @@ class TrainingPipeline:
         - Logs config
         - Runs core training
         - Evaluates
-        - Exports artifacts to disk
+        - Exports artifacts to disk (standardized names)
         - Logs model + artifacts to MLflow
         - Registers model (explicitly) + optional alias/stage
         """
@@ -113,89 +86,68 @@ class TrainingPipeline:
             self.logger.info(f"Final validation metrics: {metrics}")
             mlflow.log_metrics(metrics)
 
-            # 4. Export all artifacts to disk first (creates files)
+            # 4. Export all artifacts to disk first (using standardized names)
             self._export(artifacts, metrics)
 
             # 5. Log the model as proper MLflow PyTorch model
             registered_model_name = "TabularMultiTargetRegressor"
-            model_artifact_path = "pytorch_model"  # consistent subfolder in artifacts
+            model_artifact_path = "model"           # appears as /model in MLflow artifacts
 
             try:
-                # Log the PyTorch model with auto-registration
                 mlflow.pytorch.log_model(
                     artifacts.model,
                     name=model_artifact_path,
-                    registered_model_name=registered_model_name,  # this auto-registers / creates new version
+                    registered_model_name=registered_model_name,
                     metadata={
                         "description": "Multi-target regression model for health/economic indicators",
                         "best_cv_loss": artifacts.study.best_value,
                         "framework": "PyTorch",
                         "run_id": mlflow_run.info.run_id,
                     },
-                    # conda_env=None,  # optional: you can add if needed
                 )
                 self.logger.info(f"Model logged and auto-registered under: {registered_model_name}")
 
-                # 6. Explicitly get the latest version and optionally promote it
+                # Get latest version
                 from mlflow import MlflowClient
                 client = MlflowClient()
-
-                # Get the latest version (just registered)
                 versions = client.search_model_versions(f"name='{registered_model_name}'")
                 if versions:
                     latest_version = max(versions, key=lambda v: int(v.version)).version
                     self.logger.info(f"Registered model version: {latest_version}")
-
-                    # Optional: auto-set alias (uncomment if you want this automatically)
-                    # client.set_registered_model_alias(
-                    #     name=registered_model_name,
-                    #     alias="champion",
-                    #     version=latest_version
-                    # )
-                    # self.logger.info(f"Set alias 'champion' on version {latest_version}")
-
-                    # Optional: auto-transition to Staging or Production
-                    # client.transition_model_version_stage(
-                    #     name=registered_model_name,
-                    #     version=latest_version,
-                    #     stage="Staging",  # or "Production"
-                    #     archive_existing_versions=False
-                    # )
-                    # self.logger.info(f"Transitioned version {latest_version} to Staging")
-
+                    # Optional: set alias or stage here if desired
                 else:
-                    self.logger.warning("No versions found after registration — check MLflow server")
+                    self.logger.warning("No versions found after registration")
 
             except Exception as e:
                 self.logger.error(f"Failed to log/register model: {e}", exc_info=True)
-                raise  # Now raise on failure to debug easier during development
+                raise
 
-            # 7. Log exported artifacts
-            artifacts_map = {
-                "raw_weights":   [self.cfg.export.weights],
-                "preprocessors": [self.cfg.export.in_scaler, self.cfg.export.tar_scaler, self.cfg.export.cat_encoder, self.cfg.export.metadata],
-                # Consistency with inference download
-            }
+            # 6. Standardized artifact logging – clean and consistent
+            export_path = self._export_dir
 
-            for artifact_path, filenames in artifacts_map.items():
-                for name in filenames:
-                    local_path = self._export_dir / name
-                    if local_path.exists():
-                        try:
-                            mlflow.log_artifact(local_path, artifact_path)
-                            self.logger.debug(f"Logged artifact: {artifact_path}/{name}")
-                        except Exception as e:
-                            self.logger.warning(f"Failed to log artifact {name}: {e}")
-                    else:
-                        self.logger.warning(f"Artifact file not found: {local_path}")
+            # Option A: Log the entire export folder at once (easiest)
+            mlflow.log_artifacts(
+                local_dir=str(export_path),
+                artifact_path="export",           # → appears as /export/model_state.pth etc. in UI
+            )
+            self.logger.info("All exported files logged to MLflow under 'export/' folder")
 
-            self.logger.info("Pipeline completed. MLflow run logged.")
+            # Option B: Log key files with semantic paths (more discoverable when browsing). A and B don't conflict
+            mlflow.log_artifact(export_path / self.cfg.export.weights,        "model")
+            mlflow.log_artifact(export_path / self.cfg.export.input_scaler,   "preprocessors")
+            mlflow.log_artifact(export_path / self.cfg.export.target_scaler,  "preprocessors")
+            if (export_path / self.cfg.export.cat_encoder).exists():
+                mlflow.log_artifact(export_path / self.cfg.export.cat_encoder, "preprocessors")
+            mlflow.log_artifact(export_path / self.cfg.export.metadata,       "preprocessors")
+
+            self.logger.info("Pipeline completed. MLflow run fully logged.")
             self.logger.info(
-                f"View in UI: mlflow ui → http://127.0.0.1:5000/#/experiments/{mlflow_run.info.experiment_id}/runs/{mlflow_run.info.run_id}"
+                f"View in UI: mlflow ui → http://127.0.0.1:5000/#/experiments/"
+                f"{mlflow_run.info.experiment_id}/runs/{mlflow_run.info.run_id}"
             )
             self.logger.info(
-                f"Model registered as: models:/{registered_model_name}/latest-version "
-                f"(use @champion alias after promotion)"
+                f"Model registered as: models:/{registered_model_name}/latest "
+                f"(use @champion alias after promotion if configured)"
             )
 
     def train_only(self) -> TrainingArtifacts:
@@ -452,26 +404,35 @@ class TrainingPipeline:
         self.logger.info(f"Final training completed (best epoch: {best_epoch})")
 
     def _export(self, artifacts: TrainingArtifacts, metrics: dict):
-        if self._export_dir is None:
-            raise RuntimeError("Export directory not set")
+        # Save to Hydra's per-run output dir
+        run_dir = Path(HydraConfig.get().runtime.output_dir)
+        
+        p = run_dir / self._export_dir
+        p.mkdir(parents=True, exist_ok=True)
 
-        p = self._export_dir
-
+        # ─── Model state ────────────────────────────────────────
         torch.save(artifacts.model.state_dict(), p / self.cfg.export.weights)
 
-        joblib.dump(artifacts.preprocessors["num_scaler"], p / self.cfg.export.in_scaler)
-        joblib.dump(artifacts.preprocessors["tar_scaler"], p / self.cfg.export.tar_scaler)
-        joblib.dump(artifacts.preprocessors["cat_encoder"], p / self.cfg.export.cat_encoder)
+        # ─── Preprocessors ──────────────────────────────────────
+        joblib.dump(artifacts.preprocessors["num_scaler"],   p / self.cfg.export.input_scaler)
+        joblib.dump(artifacts.preprocessors["tar_scaler"],   p / self.cfg.export.target_scaler)
+        if "cat_encoder" in artifacts.preprocessors and artifacts.preprocessors["cat_encoder"] is not None:
+            joblib.dump(artifacts.preprocessors["cat_encoder"], p / self.cfg.export.cat_encoder)
 
+        # ─── Metadata (single source of truth) ──────────────────
         metadata = {
+            "created_at": datetime.now().isoformat(),
             "best_hparams": artifacts.study.best_params,
-            "best_cv_loss": artifacts.study.best_value,
-            "emb_sizes": artifacts.emb_sizes,
+            "best_cv_loss": float(artifacts.study.best_value),
+            "embedding_sizes": artifacts.emb_sizes,               # critical for model reconstruction
             "numeric_features": self.cfg.data.num_cols,
             "categorical_features": self.cfg.data.cat_cols,
-            "targets": self.cfg.data.target_cols,
+            "target_features": self.cfg.data.target_cols,
+            "final_val_metrics": {k: float(v) for k, v in metrics.items()},
             "final_val_metrics": metrics,
             "timestamp": pd.Timestamp.now().isoformat(),
         }
 
-        (p / self.cfg.export.metadata).write_text(json.dumps(metadata, indent=2))
+        metadata_path = p / self.cfg.export.metadata
+        metadata_path.write_text(json.dumps(metadata, indent=2, default=str))  # handles non-serializable types
+        self.logger.info(f"Exported metadata → {metadata_path}")

@@ -1,9 +1,8 @@
 
-
-dir: model_export/${now:%Y%m%d_%H%M%S}
-
-weights: final_model_weights.pth
-in_scaler: num_scaler.pkl
-tar_scaler: target_scaler.pkl
-cat_encoder: cat_encoder.pkl
-metadata: run_metadata.json
+# dir: ${hydra:runtime.output_dir}/exported   # ← clear, colocated with hydra logs
+dir: exported_model   # relative to Hydra run dir — no timestamp needed
+weights:        model_state.pth
+input_scaler:   input_scaler.joblib
+target_scaler:  target_scaler.joblib
+cat_encoder:    cat_encoder.joblib
+metadata:       metadata.json

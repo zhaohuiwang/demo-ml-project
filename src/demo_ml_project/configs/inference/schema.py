@@ -51,6 +51,9 @@ class InferenceConfig(BaseModel):
         description="Target variable names (used for output column naming: pred_ + name)"
     )
 
+    num_workers: int = Field(default=0, ge=0, le=16,
+        description="DataLoader workers (0 = no multiprocessing, safe for debugging)"
+    )
     batch_size: int = Field(256, ge=1)
     device: Optional[Literal["cuda", "cpu", "mps"]] = Field(
         None, description="null = auto (cuda > mps > cpu)"

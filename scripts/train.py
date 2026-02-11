@@ -57,7 +57,8 @@ def main(hydra_cfg: RootConfig):
     )
 
     logger = get_logger(__name__)
-    logger.info("Output directory: %s", run_dir)
+
+    logger.info(f"Hydra run directory: {run_dir}")
 
     # No conversion needed — cfg is already structured & native-typed
     pipeline = TrainingPipeline(cfg)
@@ -65,6 +66,7 @@ def main(hydra_cfg: RootConfig):
     try:
         pipeline.run()
         logger.info("Training pipeline completed ✓")
+        logger.info("Hydra output directory: %s", run_dir)
     except Exception:
         logger.exception("Training failed")
         raise

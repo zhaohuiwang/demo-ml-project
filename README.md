@@ -150,6 +150,10 @@ mlflow server \
 
 ### Inference 
 MLflow UI > Models > Click a version > Asliase: Add > champion > Run inference script
+```Bash
+python scripts/inference.py num_workers=4 batch_size=512
+
+```
 
 ### Docker build & run
 ```Bash
