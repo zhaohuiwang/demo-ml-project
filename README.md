@@ -16,28 +16,64 @@ A clean, configurable, and leakage-safe PyTorch-based pipeline for multi-target 
 ## Project Structure
 ```
 demo-ml-project/
-├── conf/                     # Hydra configuration files
-│   ├── config.yaml
+├── conf/                  # Hydra configuration YAML files
+│   ├── training_conf.yaml
 │   ├── data/
-│   ├── training/             # default + cv5.yaml, cv_timeseries.yaml, etc.
+│   ├── training/
 │   ├── optuna/
 │   └── export/
 ├── data/
-│   └── processed/            # your Parquet / CSV training files
-├── model_export/             # automatically created – contains saved models
+│   └── processed/
+├── exported_model
+├── model_export/          # automatically created – contains saved models
+├── mlflow.db
+├── mlflow_tmp_download
+│   └── export
+│       ├── cat_encoder.joblib
+│       ├── input_scaler.joblib
+│       ├── metadata.json
+│       ├── model_state.pth
+│       └── target_scaler.joblib
+├── mlruns
+│   └── 1
+│       ├── feafc2e349944d0db3099a9d428d5244
+│       └── models
+├── outputs
+│   └── 2026-02-11
+│       └── 15-50-18
 ├── scripts/
-│   ├── train.py              # main training entry point
-│   └── inference.py          # example script for batch predictions
-├── src/
-│   └── demo_ml_project/
-│       ├── configs/          # Pydantic schema & artifacts
-│       ├── data/             # dataset class + preprocessing logic
-│       ├── models/           # neural network definition
-│       ├── optimization/     # Optuna objective function
-│       ├── pipelines/        # core training pipeline
-│       └── utils/            # logging, early stopping, etc.
+│   ├── train.py          # main training entry point
+│   └── inference.py      # batch predictions
+├── src
+│   └── demo_ml_project
+│       ├── __init__.py
+│       ├── cli.py
+│       ├── configs
+│       │   ├── data
+│       │   ├── inference   # Pydantic class for inference
+│       │   └── training    # 
+│       ├── data
+│       ├── features
+│       ├── models
+│       │   └── model.py    # call order script > pipeline > model
+│       ├── optimization
+│       ├── pipelines
+│       ├── pipelines
+│       │   ├── inference_pipeline.py
+│       │   └── model_training.py
+│       ├── registry
+│       ├── service
+│       └── utils
 ├── README.md
-└── pyproject.toml          # or requirements.txt
+├── pyproject.toml
+├── pytest.ini
+├── uv.lock
+├── watch-and-train.sh
+└── zw_notes      # Personal study notes
+    ├── MY_NOTES.md
+    ├── assemble_repo.py
+    ├── assemble_repo.sh
+    └── helpers.py
 ```
 ## Quick Start
 
