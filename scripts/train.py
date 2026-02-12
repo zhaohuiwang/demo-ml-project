@@ -10,7 +10,7 @@ from demo_ml_project.configs.training.schema import RootConfig
 from demo_ml_project.pipelines.model_training import TrainingPipeline
 from demo_ml_project.utils.logging import configure_logging, get_logger
 
-# Depending on system, you may need to specify
+# Depending on system, you may need to specify (required on Mac)
 # import mlflow
 # mlflow.set_tracking_uri("file:./mlruns")
 
