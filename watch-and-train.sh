@@ -38,8 +38,8 @@ done
 
 # Command to run on changes
 # CMD=(python -c "import time; print('hello'); time.sleep(10)") # dry-run
-# CMD=(.venv/bin/python -u scripts/train.py)
-CMD=(python -X faulthandler -c "import torch; print('ok')")
+CMD=(.venv/bin/python -u scripts/train.py)
+# CMD=(python -X faulthandler -c "import torch; print('ok')")
 
 
 
