@@ -11,6 +11,11 @@ import optuna
 import pandas as pd
 import torch
 
+import mlflow
+import mlflow.pytorch
+import mlflow.sklearn 
+from mlflow.models.signature import infer_signature
+
 from hydra.core.hydra_config import HydraConfig
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
@@ -28,10 +33,7 @@ from ..utils.logging import get_logger
 from ..utils.helpers import flatten_dict
 
 
-### MLflow manual Logging - Complete Control, Custom Workflow  
-import mlflow
-import mlflow.pytorch
-import mlflow.sklearn  
+### MLflow manual Logging - Complete Control, Custom Workflow   
 class TrainingPipeline:
     def __init__(self, cfg: RootConfig):
         self.cfg = cfg
@@ -55,6 +57,9 @@ class TrainingPipeline:
         self.experiment_name = self.cfg.mlflow.experiment_name if hasattr(self.cfg, "mlflow") else "demo-ml-tabular-regression"
         mlflow.set_experiment(self.experiment_name)
 
+        # store sample for signature
+        self.sample_processed_df: pd.DataFrame | None = None
+        
         self.logger.info(f"MLflow tracking URI: {self.tracking_uri}")
         self.logger.info(f"MLflow experiment: {self.experiment_name}")
 
@@ -94,6 +99,28 @@ class TrainingPipeline:
             model_artifact_path = "model"           # appears as /model in MLflow artifacts
 
             try:
+                # Use the real processed sample as model signature
+                if self.sample_processed_df is None:
+                    self.logger.warning("No sample processed data available → using random fallback for signature")
+                    sample_cat = torch.randint(0, 100, (4, len(self.cfg.data.cat_cols)), dtype=torch.long, device="cpu")
+                    sample_num = torch.randn(4, len(self.cfg.data.num_cols), dtype=torch.float32, device="cpu")
+                else:
+                    sample_df = self.sample_processed_df.sample(n=4, random_state=42)
+                    sample_cat = torch.tensor(sample_df[self.cfg.data.cat_cols].values, dtype=torch.long, device="cpu")
+                    sample_num = torch.tensor(sample_df[self.cfg.data.num_cols].values, dtype=torch.float32, device="cpu")
+
+                sample_input = (sample_cat, sample_num)
+
+                with torch.no_grad():
+                    sample_output = artifacts.model(sample_cat.to(self.device), sample_num.to(self.device)).cpu()
+
+                signature = infer_signature(sample_input, sample_output)
+
+                input_example = {
+                    "cat": sample_cat.numpy().tolist(),
+                    "num": sample_num.numpy().tolist()
+                }
+
                 mlflow.pytorch.log_model(
                     artifacts.model,
                     name=model_artifact_path,
@@ -183,6 +210,10 @@ class TrainingPipeline:
         # 5. Final preprocessing on full data
         final_preprocessing = prepare_data(df_clean, self.cfg, fit=True)
         final_processed_df = final_preprocessing.processed_df
+
+        # Save small sample for signature
+        self.sample_processed_df = final_processed_df.sample(n=4, random_state=42)
+        self.logger.debug(f"Saved sample of {len(self.sample_processed_df)} rows for model signature")
 
         # 6. Create loaders
         train_loader, val_loader = self._create_dataloaders(final_processed_df)
