@@ -1,34 +1,31 @@
+# conf/inference/default.yaml
 
+target_cols:
+  - breast
+  - lung_and_bronchus
+  - melanoma_of_the_skin
 
-project_root: ${hydra:runtime.cwd} # or use hydra.utils.get_original_cwd() if needed
+project_root: ${hydra:runtime.cwd}
 
-# Where to load the model & preprocessors from
+load_from: mlflow
+
+num_workers: 0
+batch_size: 256
+device: null  # null = auto (cuda > mps > cpu)
+
 local:
-  export_dir: model_export/latest  # resolved relative to project root
-
-load_from: mlflow                  # or "mlflow"
+  export_dir: model_export/latest
 
 mlflow:
   model_name: TabularMultiTargetRegressor
   version: latest
-  alias: champion     # ← this field exists
+  alias: champion
 
 input:
-  path: data/processed/model_df.parquet # 
-  format: auto                     # auto, csv, parquet
+  path: data/processed/model_df.parquet
+  format: auto  # auto, csv, parquet
 
 output:
   path: predictions.csv
   include_index: true
   columns_prefix: pred_
-
-target_cols: [breast, lung_and_bronchus, melanoma_of_the_skin]
-
-# target_cols: 
-#   - breast
-#   - lung_and_bronchus
-#   - melanoma_of_the_skin
-
-num_workers: 0
-batch_size: 256
-device: null                       # null = auto (cuda > mps > cpu)

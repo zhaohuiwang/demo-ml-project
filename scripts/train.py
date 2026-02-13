@@ -15,9 +15,8 @@ from demo_ml_project.utils.logging import configure_logging, get_logger
 # Safety check – ensure we're in project root
 # ──────────────────────────────────────────────
 PROJECT_MARKERS = [
-    Path("conf/training_conf.yaml"),
+    Path("conf/train.yaml"),
     Path("src/demo_ml_project/__init__.py"),
-    Path("scripts/train.py"),
 ]
 
 missing = [p for p in PROJECT_MARKERS if not p.is_file()]
@@ -32,7 +31,7 @@ if missing:
 @hydra.main(
     version_base=None,
     config_path="../conf",
-    config_name="training_conf" 
+    config_name="train" 
 )
 def main(hydra_cfg: RootConfig):
 

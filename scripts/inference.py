@@ -15,15 +15,17 @@ from demo_ml_project.pipelines.inference_pipeline import InferencePipeline
 from demo_ml_project.utils.logging import configure_logging, get_logger
 
 
-@hydra.main(version_base=None, config_path="../conf/inference", config_name="default")
+@hydra.main(version_base=None, config_path="../conf", config_name="inference")
 def main(hydra_cfg):
-    OmegaConf.resolve(hydra_cfg)
+    OmegaConf.resolve(hydra_cfg.inference)
 
     # # Optional: inject project_root from hydra runtime if needed
     # runtime_cwd = Path(hydra.core.hydra_config.HydraConfig.get().runtime.cwd)
     # hydra_cfg.project_root = runtime_cwd   # or hydra.utils.get_original_cwd()
 
-    cfg = InferenceConfig.model_validate(OmegaConf.to_container(hydra_cfg, resolve=True))
+    cfg = InferenceConfig.model_validate(
+        OmegaConf.to_container(hydra_cfg.inference, resolve=True)
+        )
 
     # Logging setup
     run_dir = Path(hydra.core.hydra_config.HydraConfig.get().runtime.output_dir)

@@ -38,18 +38,12 @@ class OutputConfig(BaseModel):
 class InferenceConfig(BaseModel):
     """Top-level config for inference."""
 
-    load_from: Literal["local", "mlflow"] = Field("local")
-
-    local: LocalLoadConfig = Field(default_factory=LocalLoadConfig)
-    mlflow: MLflowLoadConfig = Field(default_factory=MLflowLoadConfig)
-
-    input: InputConfig
-    output: OutputConfig
-
     target_cols: list[str] = Field(
         default_factory=lambda: ["breast", "lung_and_bronchus", "melanoma_of_the_skin"],
         description="Target variable names (used for output column naming: pred_ + name)"
     )
+
+    load_from: Literal["local", "mlflow"] = Field("local")
 
     num_workers: int = Field(default=0, ge=0, le=16,
         description="DataLoader workers (0 = no multiprocessing, safe for debugging)"
@@ -61,6 +55,13 @@ class InferenceConfig(BaseModel):
 
     # Optional: add project_root if needed for relative path resolution
     project_root: Optional[Path] = None
+
+    local: LocalLoadConfig = Field(default_factory=LocalLoadConfig)
+    mlflow: MLflowLoadConfig = Field(default_factory=MLflowLoadConfig)
+
+    input: InputConfig
+    output: OutputConfig
+
 
     model_config = ConfigDict(extra="forbid")
 
