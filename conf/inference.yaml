@@ -1,0 +1,6 @@
+
+# conf/inference.yaml
+
+defaults:
+  - _self_
+  - inference: default

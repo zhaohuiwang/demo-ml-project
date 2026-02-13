@@ -132,6 +132,8 @@ class MlflowConfig(BaseModel):
         "demo-ml-tabular-regression",
         description="MLflow experiment name"
     )
+    registered_model_name: str = Field("TabularMultiTargetRegressor")
+    model_artifact_path: str = Field("model")
     
 class RootConfig(BaseModel):
     """Top-level configuration combining all sections."""

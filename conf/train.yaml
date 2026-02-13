@@ -1,0 +1,17 @@
+# conf/training_conf.yaml
+
+defaults:
+  - _self_ # important: root config overrides come last
+  - global: default
+  - data: default # to include the default.yaml inside the data/ config group.
+  - export: default
+  - hydra: default
+  - optuna: default
+  - training: default
+
+
+mlflow:
+    tracking_uri: file:./mlruns # http://127.0.0.1:5000
+    experiment_name: demo-ml-tabular-regression
+    registered_model_name: "TabularMultiTargetRegressor"
+    model_artifact_path: "model" # appears as /model in MLflow 

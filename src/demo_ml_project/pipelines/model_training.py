@@ -54,14 +54,14 @@ class TrainingPipeline:
         )
 
         mlflow.set_tracking_uri(self.tracking_uri)
-        self.experiment_name = self.cfg.mlflow.experiment_name if hasattr(self.cfg, "mlflow") else "demo-ml-tabular-regression"
-        mlflow.set_experiment(self.experiment_name)
+
+        mlflow.set_experiment(self.cfg.mlflow.experiment_name)
 
         # store sample for signature
         self.sample_processed_df: pd.DataFrame | None = None
         
         self.logger.info(f"MLflow tracking URI: {self.tracking_uri}")
-        self.logger.info(f"MLflow experiment: {self.experiment_name}")
+        self.logger.info(f"MLflow experiment: {self.cfg.mlflow.experiment_name}")
 
     def run(self) -> None:
         """
@@ -95,8 +95,8 @@ class TrainingPipeline:
             self._export(artifacts, metrics)
 
             # 5. Log the model as proper MLflow PyTorch model
-            registered_model_name = "TabularMultiTargetRegressor"
-            model_artifact_path = "model"           # appears as /model in MLflow artifacts
+            registered_model_name = self.cfg.mlflow.registered_model_name
+            model_artifact_path = self.cfg.mlflow.model_artifact_path
 
             try:
                 # Use the real processed sample as model signature
@@ -109,22 +109,23 @@ class TrainingPipeline:
                     sample_cat = torch.tensor(sample_df[self.cfg.data.cat_cols].values, dtype=torch.long, device="cpu")
                     sample_num = torch.tensor(sample_df[self.cfg.data.num_cols].values, dtype=torch.float32, device="cpu")
 
-                sample_input = (sample_cat, sample_num)
+                # Generate signature for the torch model
+                sample_input = torch.cat([sample_cat, sample_num], dim=1)
 
                 with torch.no_grad():
                     sample_output = artifacts.model(sample_cat.to(self.device), sample_num.to(self.device)).cpu()
 
-                signature = infer_signature(sample_input, sample_output)
+                sample_input_df = pd.DataFrame(sample_input, columns=self.cfg.data.cat_cols+self.cfg.data.num_cols)
+                sample_output_df = pd.DataFrame(sample_output, columns=self.cfg.data.target_cols)
 
-                input_example = {
-                    "cat": sample_cat.numpy().tolist(),
-                    "num": sample_num.numpy().tolist()
-                }
+
+                signature = infer_signature(sample_input_df, sample_output_df)
 
                 mlflow.pytorch.log_model(
                     artifacts.model,
                     name=model_artifact_path,
                     registered_model_name=registered_model_name,
+                    signature=signature,
                     metadata={
                         "description": "Multi-target regression model for health/economic indicators",
                         "best_cv_loss": artifacts.study.best_value,
