@@ -9,5 +9,5 @@ defaults:
   - training: default
 
 mlflow:
-    tracking_uri: http://127.0.0.1:5000   # or "file:./mlruns"
+    tracking_uri: file:./mlruns # http://127.0.0.1:5000
     experiment_name: demo-ml-tabular-regression
