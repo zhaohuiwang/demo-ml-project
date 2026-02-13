@@ -1,6 +1,6 @@
 # Demo ML Project – Tabular Multi-Target Regression
 
-A clean, configurable, and leakage-safe PyTorch-based pipeline for multi-target regression on tabular data.
+A clean, configurable PyTorch-based pipeline for multi-target regression on tabular data.
 
 ## Features
 
@@ -12,6 +12,10 @@ A clean, configurable, and leakage-safe PyTorch-based pipeline for multi-target 
 - Export of model weights, fitted preprocessors, and metadata for easy inference
 - Clear separation between short HPO training and full final training
 - Multi-target regression support out of the box
+- Docker and docker compose
+- Auto run train set in watch-and-train.sh, `watchexec`
+- MLflow registry over SQLite (`mlflow.db`)
+
 
 ## Project Structure
 ```
@@ -82,13 +86,11 @@ demo-ml-project/
 ```bash
 # Recommended: use a virtual environment
 python -m venv .venv
-source .venv/bin/activate    # On Windows: .venv\Scripts\activate
+source .venv/bin/activate
 
 # Install dependencies
-pip install -r requirements.txt
-
-# or with uv (faster):
-# uv pip install -r requirements.txt
+uv sync     # pyproject.toml
+uv pip install -r requirements.txt
 ```
 ### 2. Training
 Run with default settings (single train/val split, no CV):
@@ -134,6 +136,7 @@ Main Technologies
 . pandas – data handling
 . Pydantic – strict config validation
 . joblib / torch.save – artifact persistence
+
 ### How to run the tests
 ```Bash
 # From project root
@@ -149,7 +152,7 @@ pytest --cov=src/demo_ml_project
 pytest -m "not integration"
 ```
 ### MLflow
-Update TrainingPipeline class — add MLflow logging in key places. After thr run, MLflow stores everything in a folder (mlruns/)
+Update TrainingPipeline class — add MLflow logging in key places. After the run, MLflow stores everything in a folder (mlruns/)
 ```Bash
 # Re-run training:
 python scripts/train.py
@@ -185,7 +188,7 @@ mlflow server \
 ```
 
 ### Inference 
-MLflow UI > Models > Click a version > Asliase: Add > champion > Run inference script
+Manually alias a champion model in MLflow first.  MLflow UI > Models > Click a version > Asliase: Add > champion > Run inference script
 ```Bash
 python scripts/inference.py num_workers=4 batch_size=512
 
@@ -249,25 +252,24 @@ Inference:
  │     ├── local export dir
  │     └── OR MLflow registry
  │
- └── No MLflow logging during inference (currently)
+ └── MLflow logging during inference
 
 ```
-### Philosophy & Design Choices
 
-. No data leakage: preprocessing is always fitted only on training data/folds
-. Reproducibility: fixed seeds + versioned configs + logged metadata
-. Production-ready export: model weights + all necessary preprocessors + run info
-. Flexibility: toggle CV, change search space, model architecture via config
-. Two-phase training: short trials during HPO → full training for final model
-
+### Docker serving
+```Bash
+# Build a docker image
+mlflow models build-docker \
+  --model-uri models:/TabularMultiTargetRegressor@champion \
+  --name tabular-regressor
+# Verify the new image
+docker images
+```
 ### Next Steps / Possible Improvements
 
-. Add MLflow / Weights & Biases logging
-. Support for target inverse scaling in inference
-. Stratified splitting for imbalanced regression targets
-. Learning rate scheduler & better optimizers
-. Automated tests for pipeline components
-. Docker / cloud deployment example
+. X
+. Y
+. Z
 
 ### License
 MIT License (or replace with your preferred license)

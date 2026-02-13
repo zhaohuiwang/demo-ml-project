@@ -1,10 +1,32 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# source .venv/bin/activate
+
 # ==========================================================
 # Watch & Train Script for watchexec v2
 # ==========================================================
 
+
+# ------------------------------
+# Activate virtual environment
+# ------------------------------
+if [ -f ".venv/bin/activate" ]; then
+    echo "Activating virtual environment..."
+    source .venv/bin/activate
+else
+    echo "Warning: virtual environment not found. Using system Python."
+fi
+
+# ------------------------------
+# Environment variables for PyTorch
+# ------------------------------
+export TORCH_DISABLE_SHARED_MEMORY=1   # Avoid shared memory issues
+export OMP_NUM_THREADS=1               # Limit OpenMP threads
+export MKL_NUM_THREADS=1               # Limit MKL threads
+export TORCH_NUM_THREADS=1             # Limit PyTorch threads
+
+# ------------------------------
+# Directories & extensions
+# ------------------------------
 # Directories to watch
 WATCH_DIRS=("src" "scripts" "conf" "data/processed")
 
@@ -36,19 +58,21 @@ for ext in "${EXTS[@]}"; do
     EXT_FLAGS+=(--exts "$ext")
 done
 
+
+# ------------------------------
 # Command to run on changes
+# ------------------------------
+# Using -X faulthandler to debug import hangs
+CMD=(python -X faulthandler -u scripts/train.py)
 # CMD=(python -c "import time; print('hello'); time.sleep(10)") # dry-run
-# CMD=(.venv/bin/python -u scripts/train.py)
-CMD=(python -X faulthandler -c "import torch; print('ok')")
+# CMD=(python -X faulthandler -c "import torch; print('ok')")
 
 
 
-# Run watchexec
+# ------------------------------
+# Launch watchexec
+# ------------------------------
 echo "Launching watchexec with command: ${CMD[*]}"
-TORCH_DISABLE_SHARED_MEMORY=1 \
-OMP_NUM_THREADS=1 \
-MKL_NUM_THREADS=1 \
-TORCH_NUM_THREADS=1 \
 watchexec \
     "${WATCH_FLAGS[@]}" \
     "${IGNORE_FLAGS[@]}" \
