@@ -1,30 +1,24 @@
-
-# project-root(demo-ml-project)/src/demo_ml_project/pipelines/model_training.py
 import os
 import json
 from datetime import datetime
 from pathlib import Path
-from typing import Dict
-
-import joblib
-import optuna
-import pandas as pd
-import torch
 
 import mlflow
 import mlflow.pytorch
-import mlflow.sklearn 
 from mlflow.models.signature import infer_signature
 
+import optuna
+import pandas as pd
+import torch
+from feast import FeatureStore
 from hydra.core.hydra_config import HydraConfig
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader
 from optuna.samplers import TPESampler
-from optuna.pruners import MedianPruner, HyperbandPruner
+from optuna.pruners import HyperbandPruner
 
 from ..configs.training.schema import RootConfig
 from ..configs.training.artifacts import TrainingArtifacts
-from ..data.processing import prepare_data
 from ..data.dataset import InputDataset
 from ..models.model import DynamicTabularModel
 from ..optimization.objective import objective
@@ -33,7 +27,6 @@ from ..utils.logging import get_logger
 from ..utils.helpers import flatten_dict
 
 
-### MLflow manual Logging - Complete Control, Custom Workflow   
 class TrainingPipeline:
     def __init__(self, cfg: RootConfig):
         self.cfg = cfg
@@ -43,252 +36,105 @@ class TrainingPipeline:
             "mps" if torch.backends.mps.is_available() else
             "cpu"
         )
-        self._val_loader: DataLoader | None = None
-        self._export_dir: Path | None = None
 
-        # MLflow setup
-        # Priority: env var > Hydra config > default
-        self.tracking_uri = os.getenv(
-            "MLFLOW_TRACKING_URI",
-            self.cfg.mlflow.tracking_uri if hasattr(self.cfg, "mlflow") else "http://127.0.0.1:5000"
-        )
+        # Feast
+        self.store = FeatureStore(repo_path=str(cfg.feast.repo_path))
+        self.entity_col = cfg.feast.entity_column
+        self.ts_col = cfg.feast.event_timestamp_column
 
-        mlflow.set_tracking_uri(self.tracking_uri)
+        # MLflow
+        tracking_uri = os.getenv("MLFLOW_TRACKING_URI", cfg.mlflow.tracking_uri)
+        mlflow.set_tracking_uri(tracking_uri)
+        mlflow.set_experiment(cfg.mlflow.experiment_name)
 
-        mlflow.set_experiment(self.cfg.mlflow.experiment_name)
+        self.val_loader = None
+        self.export_dir = None
+        self.sample_processed_df = None
 
-        # store sample for signature
-        self.sample_processed_df: pd.DataFrame | None = None
-        
-        self.logger.info(f"MLflow tracking URI: {self.tracking_uri}")
-        self.logger.info(f"MLflow experiment: {self.cfg.mlflow.experiment_name}")
+        self.logger.info(f"Device: {self.device}")
+        self.logger.info(f"Feast repo: {cfg.feast.repo_path}")
+        self.logger.info(f"MLflow experiment: {cfg.mlflow.experiment_name}")
 
-    def run(self) -> None:
-        """
-        Orchestrates the full pipeline with MLflow tracking:
-        - Starts MLflow run
-        - Logs config
-        - Runs core training
-        - Evaluates
-        - Exports artifacts to disk (standardized names)
-        - Logs model + artifacts to MLflow
-        - Registers model (explicitly) + optional alias/stage
-        """
-        self._export_dir = Path(self.cfg.export.dir)
-        self._export_dir.mkdir(parents=True, exist_ok=True)
+    def run(self):
+        self.export_dir = Path(self.cfg.export.dir)
+        self.export_dir.mkdir(parents=True, exist_ok=True)
 
         with mlflow.start_run(run_name=f"run-{datetime.now().strftime('%Y%m%d-%H%M%S')}") as mlflow_run:
-            # 1. Log full flattened config early
             flat_cfg = flatten_dict(self.cfg.model_dump())
             mlflow.log_params(flat_cfg)
-            self.logger.info(f"MLflow run started: {mlflow_run.info.run_id}")
 
-            # 2. Core training (pure logic, no MLflow calls inside)
+            mlflow.log_param("feast_repo_path", str(self.cfg.feast.repo_path))
+            mlflow.log_param("feast_entity_col", self.entity_col)
+
             artifacts = self.train_only()
 
-            # 3. Evaluate
             metrics = self.evaluate(artifacts.model)
             self.logger.info(f"Final validation metrics: {metrics}")
             mlflow.log_metrics(metrics)
 
-            # 4. Export all artifacts to disk first (using standardized names)
             self._export(artifacts, metrics)
 
-            # 5. Log the model as proper MLflow PyTorch model
-            registered_model_name = self.cfg.mlflow.registered_model_name
-            model_artifact_path = self.cfg.mlflow.model_artifact_path
+            self._log_and_register_model(artifacts.model, metrics, mlflow_run.info.run_id)
 
-            try:
-                # Use the real processed sample as model signature
-                if self.sample_processed_df is None:
-                    self.logger.warning("No sample processed data available → using random fallback for signature")
-                    sample_cat = torch.randint(0, 100, (4, len(self.cfg.data.cat_cols)), dtype=torch.long, device="cpu")
-                    sample_num = torch.randn(4, len(self.cfg.data.num_cols), dtype=torch.float32, device="cpu")
-                else:
-                    sample_df = self.sample_processed_df.sample(n=4, random_state=42)
-                    sample_cat = torch.tensor(sample_df[self.cfg.data.cat_cols].values, dtype=torch.long, device="cpu")
-                    sample_num = torch.tensor(sample_df[self.cfg.data.num_cols].values, dtype=torch.float32, device="cpu")
-
-                # Generate signature for the torch model
-                sample_input = torch.cat([sample_cat, sample_num], dim=1)
-
-                with torch.no_grad():
-                    sample_output = artifacts.model(sample_cat.to(self.device), sample_num.to(self.device)).cpu()
-
-                sample_input_df = pd.DataFrame(sample_input, columns=self.cfg.data.cat_cols+self.cfg.data.num_cols)
-                sample_output_df = pd.DataFrame(sample_output, columns=self.cfg.data.target_cols)
-
-
-                signature = infer_signature(sample_input_df, sample_output_df)
-
-                mlflow.pytorch.log_model(
-                    artifacts.model,
-                    name=model_artifact_path,
-                    registered_model_name=registered_model_name,
-                    signature=signature,
-                    metadata={
-                        "description": "Multi-target regression model for health/economic indicators",
-                        "best_cv_loss": artifacts.study.best_value,
-                        "framework": "PyTorch",
-                        "run_id": mlflow_run.info.run_id,
-                    },
-                )
-                self.logger.info(f"Model logged and auto-registered under: {registered_model_name}")
-
-                # Get latest version
-                from mlflow import MlflowClient
-                client = MlflowClient()
-                versions = client.search_model_versions(f"name='{registered_model_name}'")
-                if versions:
-                    latest_version = max(versions, key=lambda v: int(v.version)).version
-                    self.logger.info(f"Registered model version: {latest_version}")
-                    # Optional: set alias or stage here if desired
-                else:
-                    self.logger.warning("No versions found after registration")
-
-            except Exception as e:
-                self.logger.error(f"Failed to log/register model: {e}", exc_info=True)
-                raise
-
-            # 6. Standardized artifact logging – clean and consistent
-            export_path = self._export_dir
-
-            # Option A: Log the entire export folder at once (easiest)
-            mlflow.log_artifacts(
-                local_dir=str(export_path),
-                artifact_path="export",           # → appears as /export/model_state.pth etc. in UI
-            )
-            self.logger.info("All exported files logged to MLflow under 'export/' folder")
-
-            # Option B: Log key files with semantic paths (more discoverable when browsing). A and B don't conflict
-            mlflow.log_artifact(export_path / self.cfg.export.weights,        "model")
-            mlflow.log_artifact(export_path / self.cfg.export.input_scaler,   "preprocessors")
-            mlflow.log_artifact(export_path / self.cfg.export.target_scaler,  "preprocessors")
-            if (export_path / self.cfg.export.cat_encoder).exists():
-                mlflow.log_artifact(export_path / self.cfg.export.cat_encoder, "preprocessors")
-            mlflow.log_artifact(export_path / self.cfg.export.metadata,       "preprocessors")
+            mlflow.log_artifacts(str(self.export_dir), "export")
 
             self.logger.info("Pipeline completed. MLflow run fully logged.")
-            self.logger.info(
-                f"View in UI: mlflow ui → http://127.0.0.1:5000/#/experiments/"
-                f"{mlflow_run.info.experiment_id}/runs/{mlflow_run.info.run_id}"
-            )
-            self.logger.info(
-                f"Model registered as: models:/{registered_model_name}/latest "
-                f"(use @champion alias after promotion if configured)"
-            )
 
     def train_only(self) -> TrainingArtifacts:
-        """
-        Pure training logic — no MLflow, no export, no evaluation.
-        Returns artifacts ready for export and evaluation.
-        """
-        # 1. Load and minimal clean
-        df = self._load_and_clean_data()
-        df_clean = df.copy()
+        entity_df = self._load_entity_df()
 
-        # 2. Optional small hold-out when CV is enabled
-        df_hpo = df_clean
+        training_service = self.store.get_feature_service("training_features")
+
+        training_df = self.store.get_historical_features(
+            entity_df=entity_df,
+            features=training_service
+        ).to_df()
+
+        self.logger.info(f"Fetched {len(training_df):,} rows from Feast")
+
+        self.sample_processed_df = training_df.sample(n=4, random_state=42)
+
+        df_hpo = training_df
         if self.cfg.training.cv.enabled:
             df_hpo, _ = train_test_split(
-                df_clean,
+                training_df,
                 test_size=0.10,
                 random_state=self.cfg.training.random_state,
                 shuffle=True,
             )
-            self.logger.info(f"CV enabled → HPO on {len(df_hpo)} rows")
 
-        # 3. Compute embedding sizes
         emb_sizes = self._compute_embedding_sizes(df_hpo, self.cfg.data.cat_cols)
 
-        # 4. Hyperparameter optimization
         study = self._run_hyperparameter_optimization(df_hpo, emb_sizes)
 
-        best_hparams = study.best_params
-        self.logger.info(f"Best CV mean loss: {study.best_value:.6f}")
-        self.logger.info(f"Best hyperparameters: {best_hparams}")
+        train_loader, val_loader = self._create_dataloaders(training_df)
+        self.val_loader = val_loader
 
-        # 5. Final preprocessing on full data
-        final_preprocessing = prepare_data(df_clean, self.cfg, fit=True)
-        final_processed_df = final_preprocessing.processed_df
+        final_model = self._create_model_from_hparams(study.best_params, emb_sizes)
 
-        # Save small sample for signature
-        self.sample_processed_df = final_processed_df.sample(n=4, random_state=42)
-        self.logger.debug(f"Saved sample of {len(self.sample_processed_df)} rows for model signature")
-
-        # 6. Create loaders
-        train_loader, val_loader = self._create_dataloaders(final_processed_df)
-        self._val_loader = val_loader
-
-        # 7. Create final model
-        final_model = self._create_model_from_hparams(best_hparams, emb_sizes)
-
-        # 8. Full training
         self._perform_final_full_training(
             model=final_model,
             train_loader=train_loader,
             val_loader=val_loader,
-            hparams=best_hparams,
+            hparams=study.best_params,
         )
 
         return TrainingArtifacts(
             model=final_model,
             study=study,
             emb_sizes=emb_sizes,
-            preprocessors={
-                "cat_encoder": final_preprocessing.cat_encoder,
-                "num_scaler": final_preprocessing.num_scaler,
-                "tar_scaler": final_preprocessing.tar_scaler,
-            },
         )
 
-    def evaluate(self, model: torch.nn.Module) -> Dict[str, float]:
-        if self._val_loader is None:
-            raise RuntimeError("Validation loader not available")
+    def _load_entity_df(self) -> pd.DataFrame:
+        path = self.cfg.data.train_data_path
+        cols = [self.entity_col]
+        if self.ts_col:
+            cols.append(self.ts_col)
 
-        self.logger.info("Running final validation pass...")
+        df = pd.read_parquet(path, columns=cols)
+        if self.ts_col is None:
+            df["event_timestamp"] = pd.Timestamp.now()
 
-        model.eval()
-        criterion = torch.nn.MSELoss()
-        total_loss = 0.0
-        n_samples = 0
-
-        with torch.inference_mode():
-            for x_cat, x_num, y_true in self._val_loader:
-                x_cat = x_cat.to(self.device, non_blocking=True)
-                x_num = x_num.to(self.device, non_blocking=True)
-                y_true = y_true.to(self.device, non_blocking=True)
-
-                pred = model(x_cat, x_num)
-                loss = criterion(pred, y_true)
-
-                total_loss += loss.item() * len(y_true)
-                n_samples += len(y_true)
-
-        if n_samples == 0:
-            return {"val_rmse": float("inf"), "val_mse": float("inf")}
-
-        mse = total_loss / n_samples
-        return {"val_rmse": mse ** 0.5, "val_mse": mse}
-
-    # ──────────────────────────────────────────────
-    # Private helpers
-    # ──────────────────────────────────────────────
-
-    def _load_and_clean_data(self) -> pd.DataFrame:
-        path = Path(self.cfg.data.train_data_path)
-        if not path.exists():
-            raise FileNotFoundError(f"Training data not found: {path}")
-
-        df = pd.read_parquet(path, engine="pyarrow")
-        if self.cfg.data.drop_columns:
-            df = df.drop(columns=self.cfg.data.drop_columns, errors="ignore")
-
-        if "population" in df.columns:
-            df["population"] = df["population"].fillna(df["population"].median()).astype("int32")
-
-        numeric_cols = df.select_dtypes(include="number").columns
-        df[numeric_cols] = df[numeric_cols].fillna(df[numeric_cols].median())
         return df
 
     @staticmethod
@@ -322,13 +168,10 @@ class TrainingPipeline:
         )
 
     def _run_hyperparameter_optimization(self, df_hpo: pd.DataFrame, emb_sizes):
-        pruner_map = {"median": MedianPruner(), "hyperband": HyperbandPruner(), "nop": optuna.pruners.NopPruner()}
-        sampler_map = {"tpe": TPESampler(multivariate=True, group=True)}
-
         study = optuna.create_study(
             direction="minimize",
-            sampler=sampler_map.get(self.cfg.optuna.sampler, TPESampler()),
-            pruner=pruner_map.get(self.cfg.optuna.pruner, MedianPruner()),
+            sampler=TPESampler(multivariate=True, group=True),
+            pruner=HyperbandPruner(),
         )
 
         study.optimize(
@@ -377,7 +220,7 @@ class TrainingPipeline:
         early_stopping = EarlyStopping(patience=self.cfg.training.patience)
         best_epoch = 0
 
-        self.logger.info("Starting final full training with selected hyperparameters...")
+        self.logger.info("Starting final full training...")
 
         for epoch in range(1, self.cfg.training.max_epochs + 1):
             model.train()
@@ -420,51 +263,104 @@ class TrainingPipeline:
             early_stopping(val_loss, model)
 
             if early_stopping.early_stop:
-                self.logger.info(
-                    f"Early stopping triggered at epoch {epoch} "
-                    f"(best val loss: {early_stopping.best_loss:.6f})"
-                )
+                self.logger.info(f"Early stopping at epoch {epoch} (best val loss: {early_stopping.best_loss:.6f})")
                 break
 
             best_epoch = epoch
 
-        # Load best weights if available
         if early_stopping.best_model_state is not None:
             model.load_state_dict(early_stopping.best_model_state)
-            self.logger.info(f"Restored best weights (val loss: {early_stopping.best_loss:.6f})")
 
         self.logger.info(f"Final training completed (best epoch: {best_epoch})")
 
+    def evaluate(self, model: torch.nn.Module) -> dict[str, float]:
+        if self.val_loader is None:
+            raise RuntimeError("Validation loader not available")
+
+        self.logger.info("Running final validation pass...")
+
+        model.eval()
+        criterion = torch.nn.MSELoss()
+        total_loss = 0.0
+        n_samples = 0
+
+        with torch.inference_mode():
+            for x_cat, x_num, y_true in self.val_loader:
+                x_cat = x_cat.to(self.device, non_blocking=True)
+                x_num = x_num.to(self.device, non_blocking=True)
+                y_true = y_true.to(self.device, non_blocking=True)
+
+                pred = model(x_cat, x_num)
+                loss = criterion(pred, y_true)
+
+                total_loss += loss.item() * len(y_true)
+                n_samples += len(y_true)
+
+        if n_samples == 0:
+            return {"val_rmse": float("inf"), "val_mse": float("inf")}
+
+        mse = total_loss / n_samples
+        return {"val_rmse": mse ** 0.5, "val_mse": mse}
+
     def _export(self, artifacts: TrainingArtifacts, metrics: dict):
-        # Save to Hydra's per-run output dir
         run_dir = Path(HydraConfig.get().runtime.output_dir)
-        
-        p = run_dir / self._export_dir
+        p = run_dir / self.cfg.export.dir
         p.mkdir(parents=True, exist_ok=True)
 
-        # ─── Model state ────────────────────────────────────────
         torch.save(artifacts.model.state_dict(), p / self.cfg.export.weights)
 
-        # ─── Preprocessors ──────────────────────────────────────
-        joblib.dump(artifacts.preprocessors["num_scaler"],   p / self.cfg.export.input_scaler)
-        joblib.dump(artifacts.preprocessors["tar_scaler"],   p / self.cfg.export.target_scaler)
-        if "cat_encoder" in artifacts.preprocessors and artifacts.preprocessors["cat_encoder"] is not None:
-            joblib.dump(artifacts.preprocessors["cat_encoder"], p / self.cfg.export.cat_encoder)
-
-        # ─── Metadata (single source of truth) ──────────────────
         metadata = {
             "created_at": datetime.now().isoformat(),
             "best_hparams": artifacts.study.best_params,
             "best_cv_loss": float(artifacts.study.best_value),
-            "embedding_sizes": artifacts.emb_sizes,               # critical for model reconstruction
+            "embedding_sizes": artifacts.emb_sizes,
             "numeric_features": self.cfg.data.num_cols,
             "categorical_features": self.cfg.data.cat_cols,
             "target_features": self.cfg.data.target_cols,
             "final_val_metrics": {k: float(v) for k, v in metrics.items()},
-            "final_val_metrics": metrics,
             "timestamp": pd.Timestamp.now().isoformat(),
+            "feast_repo_path": str(self.cfg.feast.repo_path),
+            "feast_entity_col": self.entity_col,
         }
 
         metadata_path = p / self.cfg.export.metadata
-        metadata_path.write_text(json.dumps(metadata, indent=2, default=str))  # handles non-serializable types
+        metadata_path.write_text(json.dumps(metadata, indent=2, default=str))
         self.logger.info(f"Exported metadata → {metadata_path}")
+
+    def _log_and_register_model(self, model, metrics, run_id):
+        try:
+            if self.sample_processed_df is None:
+                sample_cat = torch.randint(0, 100, (4, len(self.cfg.data.cat_cols)), device="cpu")
+                sample_num = torch.randn(4, len(self.cfg.data.num_cols), device="cpu")
+            else:
+                sample_df = self.sample_processed_df.sample(n=4, random_state=42)
+                sample_cat = torch.tensor(sample_df[self.cfg.data.cat_cols].values, device="cpu")
+                sample_num = torch.tensor(sample_df[self.cfg.data.num_cols].values, device="cpu")
+
+            sample_input = (sample_cat, sample_num)
+
+            with torch.no_grad():
+                sample_output = model(sample_cat.to(self.device), sample_num.to(self.device)).cpu()
+
+            signature = infer_signature(sample_input, sample_output)
+            input_example = {
+                "cat": sample_cat.numpy().tolist(),
+                "num": sample_num.numpy().tolist()
+            }
+
+            mlflow.pytorch.log_model(
+                model,
+                "model",
+                registered_model_name="TabularMultiTargetRegressor",
+                signature=signature,
+                input_example=input_example,
+                metadata={
+                    "description": "Multi-target regression model",
+                    "best_cv_loss": artifacts.study.best_value,
+                    "run_id": run_id,
+                },
+            )
+            self.logger.info("Model logged and registered to MLflow")
+
+        except Exception as e:
+            self.logger.error(f"Failed to log/register model: {e}")

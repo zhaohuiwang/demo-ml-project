@@ -8,6 +8,9 @@ defaults:
   - hydra: default
   - optuna: default
   - training: default
+  
+  # ########## Feast ##########
+  - feast: default
 
 
 mlflow:

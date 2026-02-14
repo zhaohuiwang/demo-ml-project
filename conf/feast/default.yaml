@@ -1,0 +1,7 @@
+
+# conf/feast/default.yaml
+
+repo_path: feature_repo/feature_repo
+entity_column: sample_id               # must exist or be generated in data
+event_timestamp_column: null           # set to real column name if time-series
+offline_store_type: file               # or bigquery, redshift, etc. later

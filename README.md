@@ -104,6 +104,24 @@ python scripts/train.py training=cv3
 ```
 Note: on MacOS Dataloader num_workers=0, persistent_workers=False whereas on Ubuntu Dataloader num_workers=2, persistent_workers=True
 
+When run on feast, feature_repo, first run 
+```Python
+python3 scripts/preprocess_for_feast.py
+``` 
+```Bash
+cd feature_repo
+feast apply
+
+# Materialize (adjust date range to cover your data)
+feast materialize-incremental 2020-01-01
+# or full refresh if needed:
+# feast materialize 2020-01-01 $(date +%Y-%m-%d)
+
+```
+Next either respecify the conf/data/default.yaml or apply a overwrite argument
+```Bash
+python3 scripts/train.py   data.train_data_path=data/processed/processed_for_feast.parquet
+```
 
 Time runs for comparison:
 ```Bash

@@ -134,7 +134,13 @@ class MlflowConfig(BaseModel):
     )
     registered_model_name: str = Field("TabularMultiTargetRegressor")
     model_artifact_path: str = Field("model")
-    
+
+# ########## Feast ##########
+class FeastConfig(BaseModel):
+    repo_path: str = Field("feature_repo", description="Path to Feast repository")
+    entity_column: str = Field("sample_id", description="Entity column name used in Feast")
+    event_timestamp_column: Optional[str] = Field(None, description="Timestamp column if time-aware")
+
 class RootConfig(BaseModel):
     """Top-level configuration combining all sections."""
 
@@ -144,6 +150,9 @@ class RootConfig(BaseModel):
     optuna: OptunaConfig
     export: ExportConfig
     mlflow: MlflowConfig = Field(default_factory=MlflowConfig)
+
+    # ########## Feast ##########
+    feast: FeastConfig = Field(default_factory=FeastConfig)
 
     model_config = ConfigDict(
         extra="forbid",
@@ -164,10 +173,14 @@ class RootConfig(BaseModel):
             self.export.dir = Path(export_dir_str)
 
         # Make paths absolute
-        if not self.data.train_data_path.is_absolute():
+        if not Path(self.data.train_data_path).is_absolute():
             self.data.train_data_path = root / self.data.train_data_path
 
         if not self.export.dir.is_absolute():
             self.export.dir = root / self.export.dir
+
+        # ########## Feast ##########
+        if not Path(self.feast.repo_path).is_absolute():
+            self.feast.repo_path = root / self.feast.repo_path
 
         return self

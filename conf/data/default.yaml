@@ -3,6 +3,9 @@
 
 train_data_path: data/processed/model_df.parquet
 
+# ########## Feast ##########
+# train_data_path: data/processed/processed_for_feast.parquet
+
 drop_columns:
   - states
   - fips

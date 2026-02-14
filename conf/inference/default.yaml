@@ -29,3 +29,8 @@ output:
   path: predictions.csv
   include_index: true
   columns_prefix: pred_
+
+feast:
+  repo_path: feature_repo
+  entity_column: sample_id
+  feature_service: inference_features

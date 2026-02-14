@@ -34,6 +34,12 @@ class OutputConfig(BaseModel):
     include_index: bool = Field(True)
     columns_prefix: str = Field("pred_")
 
+# ########## Feast ##########
+class FeastConfig(BaseModel):
+    repo_path: str = Field("feature_repo")
+    entity_column: str = Field("sample_id")
+    feature_service: str = Field("inference_features")
+
 
 class InferenceConfig(BaseModel):
     """Top-level config for inference."""
@@ -62,6 +68,10 @@ class InferenceConfig(BaseModel):
     input: InputConfig
     output: OutputConfig
 
+    # ########## Feast ##########
+    project_root: Optional[Path] = None
+    feast: FeastConfig = Field(default_factory=FeastConfig)
+
 
     model_config = ConfigDict(extra="forbid")
 
@@ -82,5 +92,9 @@ class InferenceConfig(BaseModel):
         # Local export dir
         if self.load_from == "local" and not self.local.export_dir.is_absolute():
             self.local.export_dir = root / self.local.export_dir
+
+        # ########## Feast ##########
+        if not Path(self.feast.repo_path).is_absolute():
+            self.feast.repo_path = str(root / self.feast.repo_path)
 
         return self
