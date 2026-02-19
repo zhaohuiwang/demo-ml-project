@@ -14,7 +14,10 @@ defaults:
 
 
 mlflow:
-    tracking_uri: sqlite:///mlruns.db # http://127.0.0.1:5000
+    tracking_uri:  http://127.0.0.1:5000
     experiment_name: demo-ml-tabular-regression
     registered_model_name: "TabularMultiTargetRegressor"
     model_artifact_path: "model" # appears as /model in MLflow 
+
+# sqlite:///mlruns.db (local SQLite backend) everything is stored locally in a single file. No model registry, you can not register models, and can only log artifacts in the run folder mlruns/<experiment>/<run_id>/artifacts/. 
+# http://127.0.0.1:5000 (server-backed MLflow tracking server) Supports model registry, so registered_model_name will actually create and version models.

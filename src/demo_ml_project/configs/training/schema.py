@@ -2,6 +2,8 @@
 
 # project-root(demo-ml-project)/demo_ml_project.configs.schema.py
 
+import yaml
+
 from datetime import datetime
 from pathlib import Path
 from typing import List, Tuple, Literal, Optional
@@ -40,6 +42,16 @@ class DataConfig(BaseModel):
         if not v.exists():
             raise ValueError(f"Data file not found: {v}")
         return v
+    @classmethod
+    def load_default(cls):
+        """
+        A loader function to load data configuration from project-root/conf/data/default and return a ready-to-use Python object.
+        """
+        path = Path(__file__).resolve().parents[4] / "conf/data/default.yaml"
+
+        with open(path) as f:
+            data = yaml.safe_load(f)
+        return cls(**data)
 
 
 class TrainingConfig(BaseModel):

@@ -1,3 +1,4 @@
+import numpy as np
 import os
 import json
 from datetime import datetime
@@ -28,7 +29,21 @@ from ..utils.helpers import flatten_dict
 
 
 class TrainingPipeline:
+    """
+    End-to-end training pipeline for tabular deep learning models.
+
+    Responsibilities:
+    - Fetch historical features from Feast
+    - Run hyperparameter optimization with Optuna
+    - Train final model with early stopping
+    - Evaluate validation performance
+    - Export artifacts and metadata
+    - Log and register model in MLflow
+    """
     def __init__(self, cfg: RootConfig):
+        """
+        Initialize the training pipeline.
+        """
         self.cfg = cfg
         self.logger = get_logger(self.__class__.__name__)
         self.device = torch.device(
@@ -38,7 +53,7 @@ class TrainingPipeline:
         )
 
         # Feast
-        self.store = FeatureStore(repo_path=str(cfg.feast.repo_path))
+        self.store = FeatureStore(repo_path=cfg.feast.repo_path)
         self.entity_col = cfg.feast.entity_column
         self.ts_col = cfg.feast.event_timestamp_column
 
@@ -56,6 +71,9 @@ class TrainingPipeline:
         self.logger.info(f"MLflow experiment: {cfg.mlflow.experiment_name}")
 
     def run(self):
+        """
+        Execute the full training pipeline.
+        """
         self.export_dir = Path(self.cfg.export.dir)
         self.export_dir.mkdir(parents=True, exist_ok=True)
 
@@ -63,7 +81,7 @@ class TrainingPipeline:
             flat_cfg = flatten_dict(self.cfg.model_dump())
             mlflow.log_params(flat_cfg)
 
-            mlflow.log_param("feast_repo_path", str(self.cfg.feast.repo_path))
+            mlflow.log_param("feast_repo_path", self.cfg.feast.repo_path)
             mlflow.log_param("feast_entity_col", self.entity_col)
 
             artifacts = self.train_only()
@@ -74,13 +92,16 @@ class TrainingPipeline:
 
             self._export(artifacts, metrics)
 
-            self._log_and_register_model(artifacts.model, metrics, mlflow_run.info.run_id)
+            self._log_and_register_model(artifacts.model, artifacts, mlflow_run.info.run_id)
 
-            mlflow.log_artifacts(str(self.export_dir), "export")
+            # mlflow.log_artifacts(str(self.export_dir), "export")
 
-            self.logger.info("Pipeline completed. MLflow run fully logged.")
+            # self.logger.info("Pipeline completed. MLflow run fully logged.")
 
     def train_only(self) -> TrainingArtifacts:
+        """
+        Perform training and hyperparameter optimization.
+        """
         entity_df = self._load_entity_df()
 
         training_service = self.store.get_feature_service("training_features")
@@ -111,6 +132,7 @@ class TrainingPipeline:
         self.val_loader = val_loader
 
         final_model = self._create_model_from_hparams(study.best_params, emb_sizes)
+        
 
         self._perform_final_full_training(
             model=final_model,
@@ -118,7 +140,9 @@ class TrainingPipeline:
             val_loader=val_loader,
             hparams=study.best_params,
         )
-
+        
+        self.logger.info(f"The final model: {final_model}")
+        
         return TrainingArtifacts(
             model=final_model,
             study=study,
@@ -126,11 +150,14 @@ class TrainingPipeline:
         )
 
     def _load_entity_df(self) -> pd.DataFrame:
+        """
+        Load entity dataframe required by Feast for historical feature retrieval.
+        """
         path = self.cfg.data.train_data_path
-        cols = [self.entity_col]
+        cols = [self.entity_col]    # the primary key
+        # Feast uses entity_column, timestamp to joins historical feature
         if self.ts_col:
             cols.append(self.ts_col)
-
         df = pd.read_parquet(path, columns=cols)
         if self.ts_col is None:
             df["event_timestamp"] = pd.Timestamp.now()
@@ -139,12 +166,23 @@ class TrainingPipeline:
 
     @staticmethod
     def _compute_embedding_sizes(df: pd.DataFrame, cat_cols: list[str]) -> list[tuple[int, int]]:
+        """
+        Compute embedding sizes for categorical features.
+        Embedding dimension rule: min(60, (num_unique_categories + 1) // 2)
+
+        Returns
+        -------
+        list[tuple[int, int]], List of (num_categories, embedding_dim) tuples.
+        """
         return [
             (int(df[col].nunique()), min(60, (int(df[col].nunique()) + 1) // 2))
             for col in cat_cols
         ]
 
     def _create_dataloaders(self, df: pd.DataFrame) -> tuple[DataLoader, DataLoader]:
+        """
+        Split dataset into train and validation sets and create DataLoaders.
+        """
         train_df, val_df = train_test_split(
             df,
             test_size=self.cfg.training.test_size,
@@ -168,6 +206,9 @@ class TrainingPipeline:
         )
 
     def _run_hyperparameter_optimization(self, df_hpo: pd.DataFrame, emb_sizes):
+        """
+        Run Optuna hyperparameter optimization.
+        """
         study = optuna.create_study(
             direction="minimize",
             sampler=TPESampler(multivariate=True, group=True),
@@ -185,10 +226,14 @@ class TrainingPipeline:
             n_trials=self.cfg.optuna.n_trials,
             show_progress_bar=True,
         )
-
+        self.logger.info(f"The best parameters are: {study.best_params}")
+        
         return study
 
     def _create_model_from_hparams(self, hparams: dict, emb_sizes):
+        """
+        Instantiate model using optimized hyperparameters.
+        """
         hidden_dims = [hparams[f"n_units_l{i}"] for i in range(hparams["n_layers"])]
         return DynamicTabularModel(
             emb_sizes=emb_sizes,
@@ -205,6 +250,9 @@ class TrainingPipeline:
         val_loader: DataLoader,
         hparams: dict,
     ):
+        """
+        Train model on full training data using best hyperparameters.
+        """
         optimizer_name = hparams.get("optimizer", "Adam")
         lr = hparams["lr"]
 
@@ -228,12 +276,11 @@ class TrainingPipeline:
             n_train = 0
 
             for x_cat, x_num, y in train_loader:
-                x_cat = x_cat.to(self.device, non_blocking=True)
-                x_num = x_num.to(self.device, non_blocking=True)
+                x = torch.cat([x_cat, x_num], dim=1).to(self.device, non_blocking=True)
                 y = y.to(self.device, non_blocking=True)
-
+                
                 optimizer.zero_grad()
-                pred = model(x_cat, x_num)
+                pred = model(x)
                 loss = criterion(pred, y)
                 loss.backward()
                 optimizer.step()
@@ -247,10 +294,9 @@ class TrainingPipeline:
 
             with torch.no_grad():
                 for x_cat, x_num, y in val_loader:
-                    x_cat = x_cat.to(self.device, non_blocking=True)
-                    x_num = x_num.to(self.device, non_blocking=True)
+                    x = torch.cat([x_cat, x_num], dim=1).to(self.device, non_blocking=True)
                     y = y.to(self.device, non_blocking=True)
-                    pred = model(x_cat, x_num)
+                    pred = model(x)
                     loss = criterion(pred, y)
                     val_loss_total += loss.item() * len(y)
                     n_val += len(y)
@@ -274,6 +320,9 @@ class TrainingPipeline:
         self.logger.info(f"Final training completed (best epoch: {best_epoch})")
 
     def evaluate(self, model: torch.nn.Module) -> dict[str, float]:
+        """
+        Evaluate model on validation set.
+        """
         if self.val_loader is None:
             raise RuntimeError("Validation loader not available")
 
@@ -286,11 +335,10 @@ class TrainingPipeline:
 
         with torch.inference_mode():
             for x_cat, x_num, y_true in self.val_loader:
-                x_cat = x_cat.to(self.device, non_blocking=True)
-                x_num = x_num.to(self.device, non_blocking=True)
+                x_all = torch.cat([x_cat, x_num], dim=1).to(self.device, non_blocking=True)
                 y_true = y_true.to(self.device, non_blocking=True)
 
-                pred = model(x_cat, x_num)
+                pred = model(x_all)
                 loss = criterion(pred, y_true)
 
                 total_loss += loss.item() * len(y_true)
@@ -303,6 +351,9 @@ class TrainingPipeline:
         return {"val_rmse": mse ** 0.5, "val_mse": mse}
 
     def _export(self, artifacts: TrainingArtifacts, metrics: dict):
+        """
+        Export trained model weights and metadata to disk.
+        """
         run_dir = Path(HydraConfig.get().runtime.output_dir)
         p = run_dir / self.cfg.export.dir
         p.mkdir(parents=True, exist_ok=True)
@@ -319,48 +370,51 @@ class TrainingPipeline:
             "target_features": self.cfg.data.target_cols,
             "final_val_metrics": {k: float(v) for k, v in metrics.items()},
             "timestamp": pd.Timestamp.now().isoformat(),
-            "feast_repo_path": str(self.cfg.feast.repo_path),
+            "feast_repo_path": self.cfg.feast.repo_path,
             "feast_entity_col": self.entity_col,
-        }
+        } 
 
         metadata_path = p / self.cfg.export.metadata
         metadata_path.write_text(json.dumps(metadata, indent=2, default=str))
         self.logger.info(f"Exported metadata → {metadata_path}")
 
-    def _log_and_register_model(self, model, metrics, run_id):
-        try:
-            if self.sample_processed_df is None:
-                sample_cat = torch.randint(0, 100, (4, len(self.cfg.data.cat_cols)), device="cpu")
-                sample_num = torch.randn(4, len(self.cfg.data.num_cols), device="cpu")
-            else:
-                sample_df = self.sample_processed_df.sample(n=4, random_state=42)
-                sample_cat = torch.tensor(sample_df[self.cfg.data.cat_cols].values, device="cpu")
-                sample_num = torch.tensor(sample_df[self.cfg.data.num_cols].values, device="cpu")
+    def _log_and_register_model(self, model, artifacts, run_id):
+        """
+        Log and register trained model in MLflow.
+        """
 
-            sample_input = (sample_cat, sample_num)
-
-            with torch.no_grad():
-                sample_output = model(sample_cat.to(self.device), sample_num.to(self.device)).cpu()
-
-            signature = infer_signature(sample_input, sample_output)
-            input_example = {
-                "cat": sample_cat.numpy().tolist(),
-                "num": sample_num.numpy().tolist()
-            }
-
-            mlflow.pytorch.log_model(
-                model,
-                "model",
-                registered_model_name="TabularMultiTargetRegressor",
-                signature=signature,
-                input_example=input_example,
-                metadata={
-                    "description": "Multi-target regression model",
-                    "best_cv_loss": artifacts.study.best_value,
-                    "run_id": run_id,
-                },
+        cat_array = (
+            self.sample_processed_df[self.cfg.data.cat_cols]
+            .fillna(0)
+            .to_numpy(dtype="float32")
             )
-            self.logger.info("Model logged and registered to MLflow")
+            
+        num_array = (
+            self.sample_processed_df[self.cfg.data.num_cols]
+            .to_numpy(dtype="float32") # float64 would be overkill.
+            )
+        
+        sample_input = np.concatenate([cat_array, num_array], axis=1).astype(np.float32)
+        
+        x_tensor = torch.tensor(sample_input, dtype=torch.float32) 
+        
+        with torch.no_grad():
+            sample_output = model(x_tensor.to(self.device)).detach().cpu().numpy()
 
-        except Exception as e:
-            self.logger.error(f"Failed to log/register model: {e}")
+        # infer_signature() expects np.arrays or pd.DataFrames, not tensors.
+        signature = infer_signature(sample_input, sample_output)
+
+        mlflow.pytorch.log_model(
+            pytorch_model=model.cpu(), # Ensure model is on CPU before logging
+            artifact_path="model", # mlruns/<experiment>/<run_id>/artifacts/model
+            export_model=True,
+            registered_model_name="TabularMultiTargetRegressor",
+            signature=signature,
+            input_example=sample_input.copy(), # can be a NumPy array or PyTorch tensor
+            metadata={
+                "description": "Multi-target regression model",
+                "best_cv_loss": artifacts.study.best_value,
+                "run_id": run_id,
+            },
+        )
+        self.logger.info("Model logged and registered to MLflow")

@@ -17,6 +17,11 @@ class LocalLoadConfig(BaseModel):
 class MLflowLoadConfig(BaseModel):
     model_name: str = Field("TabularMultiTargetRegressor")
     version: str = Field("latest", description="Model version or 'latest'")
+    alias: str = Field("champion", description="Aliased versions for MLflow")
+    tracking_uri: str = Field(
+        "http://127.0.0.1:5000",
+        description="MLflow tracking server URI (http://... or file:...)"
+    )
 
 
 class InputConfig(BaseModel):

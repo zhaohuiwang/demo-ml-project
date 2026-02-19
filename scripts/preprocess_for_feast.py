@@ -2,25 +2,26 @@
 # scripts/preprocess_for_feast.py (run once)
 
 import pandas as pd
+
+from pathlib import Path
 from sklearn.preprocessing import OrdinalEncoder, StandardScaler
+from demo_ml_project.configs.training.schema import DataConfig
+
+conf = DataConfig.load_default()
+
+num_cols = conf.num_cols
+cat_cols = conf.cat_cols
+target_cols = conf.target_cols
 
 df = pd.read_parquet("data/processed/model_df.parquet")
 
 # Cleaning
-df = df.drop(columns=["states", "fips", "sex"], errors="ignore")
+df = df.drop(columns=conf.drop_columns, errors="ignore")
+
 if "population" in df.columns:
     df["population"] = df["population"].fillna(df["population"].median()).astype("int32")
 
-num_cols = df.select_dtypes("number").columns
 df[num_cols] = df[num_cols].fillna(df[num_cols].median())
-
-cat_cols = ["sex_code", "age_group", "states_abbr"]
-num_cols = [
-    "year", "population", "real_gdp", "real_personal_income", "real_pce",
-    "gdp", "personal_income", "disposable_personal_income", "pce",
-    "regional_price_parities", "n_jobs", "regional_price_deflator", "non_smoker_rate"
-]
-target_cols = ["breast", "lung_and_bronchus", "melanoma_of_the_skin"]
 
 # Encoding & scaling
 if cat_cols:
@@ -40,11 +41,9 @@ if "sample_id" not in df.columns:
 if "event_timestamp" not in df.columns:
     df["event_timestamp"] = pd.Timestamp.now()
 
-df.to_parquet("data/processed/processed_for_feast.parquet", index=False)
-print("Preprocessed data saved to data/processed/processed_for_feast.parquet")
 
+project_root = Path(__file__).resolve().parents[1]
+output_file_path = project_root / "data/processed/processed_for_feast.parquet" 
 
-# from pathlib import Path
-# project_root = Path(__file__).resolve().parents[2]  # up 2 levels from scripts/
-# df.to_parquet(project_root / "data/processed/processed_for_feast.parquet", index=False)
-# print("Saved to:", project_root / "data/processed/processed_for_feast.parquet")
+df.to_parquet(output_file_path, index=False)
+print("Saved to:", output_file_path)

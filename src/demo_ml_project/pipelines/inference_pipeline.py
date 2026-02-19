@@ -114,10 +114,14 @@ class InferencePipeline:
         """Central entry point to load everything needed for inference."""
         self.logger.info(f"Loading model from source: {self.cfg.load_from}")
 
+        model_name = self.cfg.mlflow.registered_model_name
+        tracking_uri = self.cfg.mlflow.tracking_uri
+        alias = getattr(self.cfg.mlflow, "alias", "champion")
+        
         if self.cfg.load_from == "local":
             self._load_from_local()
         elif self.cfg.load_from == "mlflow":
-            self._load_from_mlflow()
+            self._load_from_mlflow(model_name=model_name, alias=alias, tracking_uri=tracking_uri)
         else:
             raise ValueError(f"Unsupported load_from value: {self.cfg.load_from}")
 
@@ -165,6 +169,7 @@ class InferencePipeline:
             self.cat_encoder = joblib.load(p / "cat_encoder.joblib")
 
         self.logger.info(f"Local load complete | targets: {self.target_features}")
+        
 
     def _load_from_mlflow(self) -> None:
         if not hasattr(self.cfg, "mlflow") or self.cfg.mlflow is None:
@@ -299,15 +304,17 @@ class InferencePipeline:
         )
 
         predictions = []
+        
+        if self.device:
+            self.model.to(self.device)
         self.model.eval()
 
         self.logger.info("Running inference...")
         with torch.inference_mode():
             for x_cat, x_num in tqdm(loader, desc="Predicting", disable=len(loader) < 10):
-                x_cat = x_cat.to(self.device, non_blocking=True)
-                x_num = x_num.to(self.device, non_blocking=True)
+                x = torch.cat([x_cat, x_num], dim=1).to(self.device, non_blocking=True)
 
-                preds_scaled = self.model(x_cat, x_num).cpu().numpy()
+                preds_scaled = self.model(x).cpu().numpy()
                 preds = self.tar_scaler.inverse_transform(preds_scaled)
                 predictions.append(preds)
 

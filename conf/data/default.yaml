@@ -1,10 +1,10 @@
 
 # project-root(demo-ml-project)/conf/data/default.yaml
 
-train_data_path: data/processed/model_df.parquet
+# train_data_path: data/processed/model_df.parquet
 
 # ########## Feast ##########
-# train_data_path: data/processed/processed_for_feast.parquet
+train_data_path: data/processed/processed_for_feast.parquet
 
 drop_columns:
   - states

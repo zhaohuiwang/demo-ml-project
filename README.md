@@ -135,6 +135,14 @@ python scripts/train.py \
   training.cv.n_folds=3 \
   optuna.n_trials=50 \
   training.batch_size=128
+```Bash
+python -m  pdb scripts/train.py data.train_data_pa
+th=data/processed/processed_for_feast.parquet
+```
+Notice: Hydra is hierarchical. You must use the full path. e.g. data.train_data_path instead of train_data_path. TO check what you can override: `python <path-to-script> --cfg job`. You can force-add a new key with `+`. 
+
+
+
 ```
 ### 3. Inference / Predictions
 After training, use the exported artifacts:
