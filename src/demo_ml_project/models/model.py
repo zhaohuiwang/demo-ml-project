@@ -38,6 +38,7 @@ class DynamicTabularModel(nn.Module):
             Dropout probability after each hidden layer
         """
         super().__init__()
+        self.n_numeric = n_numeric
 
         # Embedding layers for categorical features
         self.embeddings = nn.ModuleList(
@@ -61,31 +62,32 @@ class DynamicTabularModel(nn.Module):
             layers.append(nn.Dropout(dropout))
             current_dim = hidden_size
 
-        self.mlp = nn.Sequential(*layers)
+        self.mlp = nn.Sequential(*layers) # Multilayer Perceptron
 
         # Final output layer
         self.output_head = nn.Linear(current_dim, n_targets)
 
     def forward(
         self,
-        x_cat: torch.Tensor,    # shape: (batch_size, num_cat_features)
-        x_num: torch.Tensor,    # shape: (batch_size, n_numeric)
+        x: torch.Tensor
     ) -> torch.Tensor:
         """
         Forward pass.
 
         Parameters
         ----------
-        x_cat : torch.Tensor
-            Categorical feature indices
-        x_num : torch.Tensor
-            Numerical features (already scaled)
+        x : torch.Tensor
+            shape: (batch_size, Categorical + Numerical)
 
         Returns
         -------
         torch.Tensor
             Model predictions (batch_size, n_targets)
         """
+        # Split categorical and numerical parts
+        x_cat = x[:, : -self.n_numeric].long()
+        x_num = x[:, -self.n_numeric :]
+        
         # Embed categorical features
         embedded = [
             embedding(x_cat[:, i]) for i, embedding in enumerate(self.embeddings)
@@ -93,10 +95,10 @@ class DynamicTabularModel(nn.Module):
         x_emb = torch.cat(embedded, dim=1)
 
         # Concatenate embeddings + numerical features
-        x = torch.cat([x_emb, x_num], dim=1)
+        x_all = torch.cat([x_emb, x_num], dim=1)
 
         # Pass through MLP
-        x = self.mlp(x)
+        x_all = self.mlp(x_all)
 
         # Final prediction
-        return self.output_head(x)
+        return self.output_head(x_all)

@@ -113,7 +113,7 @@ class TrainingPipeline:
                 sample_input = torch.cat([sample_cat, sample_num], dim=1)
 
                 with torch.no_grad():
-                    sample_output = artifacts.model(sample_cat.to(self.device), sample_num.to(self.device)).cpu()
+                    sample_output = artifacts.model(sample_input).cpu()
 
                 sample_input_df = pd.DataFrame(sample_input, columns=self.cfg.data.cat_cols+self.cfg.data.num_cols)
                 sample_output_df = pd.DataFrame(sample_output, columns=self.cfg.data.target_cols)
@@ -255,11 +255,10 @@ class TrainingPipeline:
 
         with torch.inference_mode():
             for x_cat, x_num, y_true in self._val_loader:
-                x_cat = x_cat.to(self.device, non_blocking=True)
-                x_num = x_num.to(self.device, non_blocking=True)
+                x_all = torch.cat([x_cat, x_num], dim=1).to(self.device, non_blocking=True)
                 y_true = y_true.to(self.device, non_blocking=True)
 
-                pred = model(x_cat, x_num)
+                pred = model(x_all)
                 loss = criterion(pred, y_true)
 
                 total_loss += loss.item() * len(y_true)
@@ -385,12 +384,11 @@ class TrainingPipeline:
             n_train = 0
 
             for x_cat, x_num, y in train_loader:
-                x_cat = x_cat.to(self.device, non_blocking=True)
-                x_num = x_num.to(self.device, non_blocking=True)
+                x_all = torch.cat([x_cat, x_num], dim=1).to(self.device, non_blocking=True)
                 y = y.to(self.device, non_blocking=True)
 
                 optimizer.zero_grad()
-                pred = model(x_cat, x_num)
+                pred = model(x_all)
                 loss = criterion(pred, y)
                 loss.backward()
                 optimizer.step()
@@ -404,10 +402,9 @@ class TrainingPipeline:
 
             with torch.no_grad():
                 for x_cat, x_num, y in val_loader:
-                    x_cat = x_cat.to(self.device, non_blocking=True)
-                    x_num = x_num.to(self.device, non_blocking=True)
+                    x_all = torch.cat([x_cat, x_num], dim=1).to(self.device, non_blocking=True)
                     y = y.to(self.device, non_blocking=True)
-                    pred = model(x_cat, x_num)
+                    pred = model(x_all)
                     loss = criterion(pred, y)
                     val_loss_total += loss.item() * len(y)
                     n_val += len(y)

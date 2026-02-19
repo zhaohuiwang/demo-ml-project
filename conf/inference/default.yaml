@@ -20,6 +20,7 @@ mlflow:
   model_name: TabularMultiTargetRegressor
   version: latest
   alias: champion
+  tracking_uri: http://127.0.0.1:5000 # default is sqlite:/mlflow.db
 
 input:
   path: data/processed/model_df.parquet

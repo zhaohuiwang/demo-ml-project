@@ -11,7 +11,7 @@ defaults:
 
 
 mlflow:
-    tracking_uri: file:./mlruns # http://127.0.0.1:5000
+    tracking_uri: http://127.0.0.1:5000 #sqlite:///mlruns.db 
     experiment_name: demo-ml-tabular-regression
     registered_model_name: "TabularMultiTargetRegressor"
     model_artifact_path: "model" # appears as /model in MLflow 

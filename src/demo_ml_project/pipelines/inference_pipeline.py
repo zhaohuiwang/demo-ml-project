@@ -170,6 +170,7 @@ class InferencePipeline:
         if not hasattr(self.cfg, "mlflow") or self.cfg.mlflow is None:
             raise ValueError("MLflow configuration missing in inference config")
 
+        mlflow.set_tracking_uri(self.cfg.mlflow.tracking_uri)
         model_name = self.cfg.mlflow.model_name
         alias = getattr(self.cfg.mlflow, "alias", "champion")
 
@@ -304,10 +305,9 @@ class InferencePipeline:
         self.logger.info("Running inference...")
         with torch.inference_mode():
             for x_cat, x_num in tqdm(loader, desc="Predicting", disable=len(loader) < 10):
-                x_cat = x_cat.to(self.device, non_blocking=True)
-                x_num = x_num.to(self.device, non_blocking=True)
+                x = torch.cat([x_cat, x_num], dim=1).to(self.device, non_blocking=True)
 
-                preds_scaled = self.model(x_cat, x_num).cpu().numpy()
+                preds_scaled = self.model(x).cpu().numpy()
                 preds = self.tar_scaler.inverse_transform(preds_scaled)
                 predictions.append(preds)
 

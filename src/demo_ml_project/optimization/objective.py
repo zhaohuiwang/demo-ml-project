@@ -1,4 +1,3 @@
-
 # project-root(demo-ml-project)/src/demo_ml_project/optimization/objective.py
 
 import optuna
@@ -30,7 +29,10 @@ def objective(
 ) -> float:
     """
     Optuna objective function that supports optional cross-validation.
-    Returns mean validation loss across folds (or from single split if CV disabled).
+    Returns mean validation loss across folds (or from single split if CV disabled). 
+    Optuna is optimizing the following hyperparameters:
+    Network architecture: n_layers (number of hidden layers); hidden_dims (neurons per layer); dropout (dropout probability)
+    Optimizer: optimizer_name (Adam, SGD, RMSprop); lr (learning rate)
     """
     # ──────────────────────────────────────────────
     # 1. Sample hyperparameters
@@ -163,12 +165,11 @@ def objective(
         for epoch in range(cfg.optuna.n_epochs_per_trial):
             trial_model.train()
             for x_cat, x_num, y in train_loader:
-                x_cat = x_cat.to(device, non_blocking=True)
-                x_num = x_num.to(device, non_blocking=True)
+                x = torch.cat([x_cat, x_num], dim=1).to(device, non_blocking=True)
                 y = y.to(device, non_blocking=True)
 
                 optimizer.zero_grad()
-                pred = trial_model(x_cat, x_num)
+                pred = trial_model(x)
                 loss = criterion(pred, y)
                 loss.backward()
                 optimizer.step()
@@ -180,10 +181,9 @@ def objective(
 
             with torch.no_grad():
                 for x_cat, x_num, y in val_loader:
-                    x_cat = x_cat.to(device, non_blocking=True)
-                    x_num = x_num.to(device, non_blocking=True)
+                    x = torch.cat([x_cat, x_num], dim=1).to(device, non_blocking=True)
                     y = y.to(device, non_blocking=True)
-                    pred = trial_model(x_cat, x_num)
+                    pred = trial_model(x)
                     batch_loss = criterion(pred, y).item() * len(y)
                     val_loss_total += batch_loss
                     n_samples += len(y)
