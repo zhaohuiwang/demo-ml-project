@@ -113,15 +113,11 @@ class InferencePipeline:
     def load_model_and_preprocessors(self) -> None:
         """Central entry point to load everything needed for inference."""
         self.logger.info(f"Loading model from source: {self.cfg.load_from}")
-
-        model_name = self.cfg.mlflow.registered_model_name
-        tracking_uri = self.cfg.mlflow.tracking_uri
-        alias = getattr(self.cfg.mlflow, "alias", "champion")
         
         if self.cfg.load_from == "local":
             self._load_from_local()
         elif self.cfg.load_from == "mlflow":
-            self._load_from_mlflow(model_name=model_name, alias=alias, tracking_uri=tracking_uri)
+            self._load_from_mlflow()
         else:
             raise ValueError(f"Unsupported load_from value: {self.cfg.load_from}")
 
@@ -175,6 +171,7 @@ class InferencePipeline:
         if not hasattr(self.cfg, "mlflow") or self.cfg.mlflow is None:
             raise ValueError("MLflow configuration missing in inference config")
 
+        mlflow.set_tracking_uri(self.cfg.mlflow.tracking_uri)
         model_name = self.cfg.mlflow.model_name
         alias = getattr(self.cfg.mlflow, "alias", "champion")
 
