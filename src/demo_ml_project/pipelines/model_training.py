@@ -4,6 +4,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+import joblib
 import mlflow
 import mlflow.pytorch
 from mlflow.models.signature import infer_signature
@@ -94,9 +95,11 @@ class TrainingPipeline:
 
             self._log_and_register_model(artifacts.model, artifacts, mlflow_run.info.run_id)
 
-            # mlflow.log_artifacts(str(self.export_dir), "export")
+            # Log export directory (including preprocessing artifacts) to MLflow
+            export_path = Path(HydraConfig.get().runtime.output_dir) / self.cfg.export.dir
+            mlflow.log_artifacts(str(export_path), "export")
 
-            # self.logger.info("Pipeline completed. MLflow run fully logged.")
+            self.logger.info("Pipeline completed. MLflow run fully logged.")
 
     def train_only(self) -> TrainingArtifacts:
         """
@@ -115,6 +118,9 @@ class TrainingPipeline:
 
         self.sample_processed_df = training_df.sample(n=4, random_state=42)
 
+        # Load preprocessing artifacts used to create the Feast data
+        preprocessors = self._load_preprocessing_artifacts()
+
         df_hpo = training_df
         if self.cfg.training.cv.enabled:
             df_hpo, _ = train_test_split(
@@ -132,7 +138,7 @@ class TrainingPipeline:
         self.val_loader = val_loader
 
         final_model = self._create_model_from_hparams(study.best_params, emb_sizes)
-        
+
 
         self._perform_final_full_training(
             model=final_model,
@@ -140,13 +146,14 @@ class TrainingPipeline:
             val_loader=val_loader,
             hparams=study.best_params,
         )
-        
+
         self.logger.info(f"The final model: {final_model}")
-        
+
         return TrainingArtifacts(
             model=final_model,
             study=study,
             emb_sizes=emb_sizes,
+            preprocessors=preprocessors,
         )
 
     def _load_entity_df(self) -> pd.DataFrame:
@@ -163,6 +170,44 @@ class TrainingPipeline:
             df["event_timestamp"] = pd.Timestamp.now()
 
         return df
+
+    def _load_preprocessing_artifacts(self) -> dict:
+        """
+        Load the fitted preprocessing artifacts (scalers/encoders) that were used
+        to create the Feast feature store data.
+        """
+        preprocessors = {}
+
+        # Determine the path to preprocessing artifacts
+        # Assuming they're saved alongside the processed data
+        processed_dir = Path(self.cfg.data.train_data_path).parent
+
+        cat_encoder_path = processed_dir / "cat_encoder.joblib"
+        input_scaler_path = processed_dir / "input_scaler.joblib"
+        target_scaler_path = processed_dir / "target_scaler.joblib"
+
+        if cat_encoder_path.exists():
+            preprocessors["cat_encoder"] = joblib.load(cat_encoder_path)
+            self.logger.info(f"Loaded cat_encoder from {cat_encoder_path}")
+        else:
+            self.logger.warning(f"cat_encoder not found at {cat_encoder_path}")
+            preprocessors["cat_encoder"] = None
+
+        if input_scaler_path.exists():
+            preprocessors["num_scaler"] = joblib.load(input_scaler_path)
+            self.logger.info(f"Loaded input_scaler from {input_scaler_path}")
+        else:
+            self.logger.warning(f"input_scaler not found at {input_scaler_path}")
+            preprocessors["num_scaler"] = None
+
+        if target_scaler_path.exists():
+            preprocessors["tar_scaler"] = joblib.load(target_scaler_path)
+            self.logger.info(f"Loaded target_scaler from {target_scaler_path}")
+        else:
+            self.logger.warning(f"target_scaler not found at {target_scaler_path}")
+            preprocessors["tar_scaler"] = None
+
+        return preprocessors
 
     @staticmethod
     def _compute_embedding_sizes(df: pd.DataFrame, cat_cols: list[str]) -> list[tuple[int, int]]:
@@ -352,13 +397,27 @@ class TrainingPipeline:
 
     def _export(self, artifacts: TrainingArtifacts, metrics: dict):
         """
-        Export trained model weights and metadata to disk.
+        Export trained model weights, preprocessing artifacts, and metadata to disk.
         """
         run_dir = Path(HydraConfig.get().runtime.output_dir)
         p = run_dir / self.cfg.export.dir
         p.mkdir(parents=True, exist_ok=True)
 
+        # Save model weights
         torch.save(artifacts.model.state_dict(), p / self.cfg.export.weights)
+
+        # Save preprocessing artifacts
+        if artifacts.preprocessors.get("cat_encoder") is not None:
+            joblib.dump(artifacts.preprocessors["cat_encoder"], p / "cat_encoder.joblib")
+            self.logger.info(f"Exported cat_encoder.joblib")
+
+        if artifacts.preprocessors.get("num_scaler") is not None:
+            joblib.dump(artifacts.preprocessors["num_scaler"], p / "input_scaler.joblib")
+            self.logger.info(f"Exported input_scaler.joblib")
+
+        if artifacts.preprocessors.get("tar_scaler") is not None:
+            joblib.dump(artifacts.preprocessors["tar_scaler"], p / "target_scaler.joblib")
+            self.logger.info(f"Exported target_scaler.joblib")
 
         metadata = {
             "created_at": datetime.now().isoformat(),
@@ -372,7 +431,7 @@ class TrainingPipeline:
             "timestamp": pd.Timestamp.now().isoformat(),
             "feast_repo_path": self.cfg.feast.repo_path,
             "feast_entity_col": self.entity_col,
-        } 
+        }
 
         metadata_path = p / self.cfg.export.metadata
         metadata_path.write_text(json.dumps(metadata, indent=2, default=str))

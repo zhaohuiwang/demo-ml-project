@@ -16,46 +16,53 @@ from demo_ml_project.configs.training.schema import (
 
 
 @pytest.fixture
-def sample_cfg():
+def sample_cfg(tmp_path, sample_df):
     """Minimal but complete RootConfig for testing (satisfies all required fields)"""
+    from demo_ml_project.configs.training.schema import GlobalConfig
+
+    # Create dummy file to pass validation
+    dummy_file = tmp_path / "dummy.parquet"
+    sample_df.to_parquet(dummy_file)
+
     return RootConfig(
-        project_root=Path("/tmp"),  # dummy – not really used in tests
-        seed=42,
-        device="cpu",
-        data=DataConfig(
-            train_data_path=Path("dummy.parquet"),
-            drop_columns=[],
-            cat_cols=["category"],
-            date_cols=[],
-            num_cols=["value"],
-            target_cols=["target"],
-        ),
-        training=TrainingConfig(
-            test_size=0.2,
-            random_state=42,
-            batch_size=32,
-            max_epochs=10,
-            patience=5,
-            cv=CVConfig(enabled=False),  # or True if you want to test CV path
-        ),
-        optuna=OptunaConfig(
-            n_trials=5,
-            n_epochs_per_trial=3,
-            layer_range=(1, 3),
-            units_list=[32, 64, 128],
-            dropout_range=(0.1, 0.3),
-            lr_range=(1e-4, 1e-2),
-            sampler="tpe",
-            pruner="median",
-        ),
-        export=ExportConfig(
-            dir=Path("dummy_export"),
-            weights="weights.pth",
-            in_scaler="num_scaler.pkl",
-            tar_scaler="tar_scaler.pkl",
-            cat_encoder="cat_encoder.pkl",
-            metadata="metadata.json",
-        ),
+        **{
+            "global": GlobalConfig(
+                project_root=tmp_path,
+                seed=42,
+                device="cpu",
+            ),
+            "data": DataConfig(
+                train_data_path=dummy_file,
+                drop_columns=[],
+                cat_cols=["category"],
+                date_cols=[],
+                num_cols=["value"],
+                target_cols=["target"],
+            ),
+            "training": TrainingConfig(
+                test_size=0.2,
+                random_state=42,
+                batch_size=32,
+                max_epochs=10,
+                patience=5,
+                cv=CVConfig(enabled=False),
+            ),
+            "optuna": OptunaConfig(
+                n_trials=5,
+                n_epochs_per_trial=3,
+                layer_range=(1, 3),
+                units_list=[32, 64, 128],
+                dropout_range=(0.1, 0.3),
+                lr_range=(1e-4, 1e-2),
+                sampler="tpe",
+                pruner="median",
+            ),
+            "export": ExportConfig(
+                dir=tmp_path / "dummy_export",
+                weights="weights.pth",
+                metadata="metadata.json",
+            ),
+        }
     )
 
 
