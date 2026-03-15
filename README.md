@@ -97,6 +97,8 @@ Run with default settings (single train/val split, no CV):
 ```Bash
 python scripts/train.py
 ```
+If you see messages like `WARNING urllib3.connectionpool Retrying ...`, tey clean restart MLflow server, see instruction below.
+
 Use a pre-defined CV variant from conf/training/cv3.yaml
 ```Bash
 # If you created conf/training/cv3.yaml with the settings you want

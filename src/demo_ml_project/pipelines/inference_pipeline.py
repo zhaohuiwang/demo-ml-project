@@ -15,9 +15,9 @@ from hydra.core.hydra_config import HydraConfig
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-from ..configs.inference.schema import InferenceConfig
-from ..models.model import DynamicTabularModel
-from ..utils.logging import get_logger
+from demo_ml_project.configs.inference.schema import InferenceConfig
+from demo_ml_project.models.model import DynamicTabularModel
+from demo_ml_project.utils.logging import get_logger
 
 
 class InferenceDataset(Dataset):

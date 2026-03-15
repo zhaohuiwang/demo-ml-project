@@ -19,14 +19,14 @@ from torch.utils.data import DataLoader
 from optuna.samplers import TPESampler
 from optuna.pruners import HyperbandPruner
 
-from ..configs.training.schema import RootConfig
-from ..configs.training.artifacts import TrainingArtifacts
-from ..data.dataset import InputDataset
-from ..models.model import DynamicTabularModel
-from ..optimization.objective import objective
-from ..utils.early_stopping import EarlyStopping
-from ..utils.logging import get_logger
-from ..utils.helpers import flatten_dict
+from demo_ml_project.configs.training.schema import RootConfig
+from demo_ml_project.configs.training.artifacts import TrainingArtifacts
+from demo_ml_project.data.dataset import InputDataset
+from demo_ml_project.models.model import DynamicTabularModel
+from demo_ml_project.optimization.objective import objective
+from demo_ml_project.utils.early_stopping import EarlyStopping
+from demo_ml_project.utils.logging import get_logger
+from demo_ml_project.utils.helpers import flatten_dict
 
 
 class TrainingPipeline:
